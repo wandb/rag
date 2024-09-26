@@ -24,7 +24,7 @@ class EdgarDataLoader(BaseModel):
     image_description_generator: MultiModalPredictor
 
     def generate_image_description(
-        self, images: list[Image.Image], filing_data: str
+        self, images: list[Image.Image], filing_summary: str
     ) -> list[str]:
         image_descriptions = []
         for image in tqdm(images, desc="Generating image descriptions:"):
@@ -33,7 +33,8 @@ class EdgarDataLoader(BaseModel):
                     self.image_description_generator.predict(
                         user_prompts=[
                             f"""You are an expert finacial analyst tasked with genrating
-    desciptions for images in financial filings.
+    desciptions for images in financial filings given a summary of the financial filing
+    and some important keywords present in the document along with the image.
 
     Here are some rules you should follow:
     1. If the image has text in it, you should first
@@ -45,10 +46,10 @@ class EdgarDataLoader(BaseModel):
     6. If there are tables or tabular data in the image, you should extract the data in markdown format.
     7. You should pay attention to the financial filing and use the information to generate the description.
 
-    Here is the financial filing:
+    Here is the financial filing's summary:
 
     ---
-    {filing_data}
+    {filing_summary}
     ---""",
                             encode_image(image),
                         ],
@@ -95,13 +96,15 @@ Here is the financial filing:
             desc=f"Fetching {form_type} filings for {self.company_name}",
         ):
 
+            filing_markdown = filing.markdown()
+            filing_summary = self.summarize_filing(filing_markdown)
             current_filing_data = {
                 "form_type": filing.primary_doc_description,
                 "filing_date": filing.filing_date,
                 "accession_no": filing.accession_no,
                 "cik": filing.cik,
-                "content": filing.markdown(),
-                "summary": self.summarize_filing(filing.markdown()),
+                "content": filing_markdown,
+                "summary": filing_summary,
             }
 
             current_filing_data["images"] = []
@@ -126,7 +129,8 @@ Here is the financial filing:
             if upload_image_descriptions:
                 current_filing_data["image_descriptions"] = (
                     self.generate_image_description(
-                        current_filing_data["images"], current_filing_data["content"]
+                        images=current_filing_data["images"],
+                        filing_summary=filing_summary,
                     )
                 )
 
