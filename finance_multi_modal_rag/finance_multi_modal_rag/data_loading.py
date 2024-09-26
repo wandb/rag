@@ -28,37 +28,42 @@ class EdgarDataLoader(BaseModel):
     ) -> list[str]:
         image_descriptions = []
         for image in tqdm(images, desc="Generating image descriptions:"):
-            image_descriptions.append(
-                self.image_description_generator.predict(
-                    user_prompts=[
-                        f"""You are an expert finacial analyst tasked with genrating
-desciptions for images in financial filings.
+            try:
+                image_descriptions.append(
+                    self.image_description_generator.predict(
+                        user_prompts=[
+                            f"""You are an expert finacial analyst tasked with genrating
+    desciptions for images in financial filings.
 
-Here are some rules you should follow:
-1. If the image has text in it, you should first
-generate a description of the image and then extract the text in markdown format.
-2. If the image does not have text in it, you should generate a description of the image.
-3. You should frame your reply in markdown format.
-4. The description should be a list of bullet points under the markdown header "Description of the image".
-5. The extracted text should be under the markdown header "Extracted text from the image".
-6. If there are tables or tabular data in the image, you should extract the data in markdown format.
-7. You should pay attention to the financial filing and use the information to generate the description.
+    Here are some rules you should follow:
+    1. If the image has text in it, you should first
+    generate a description of the image and then extract the text in markdown format.
+    2. If the image does not have text in it, you should generate a description of the image.
+    3. You should frame your reply in markdown format.
+    4. The description should be a list of bullet points under the markdown header "Description of the image".
+    5. The extracted text should be under the markdown header "Extracted text from the image".
+    6. If there are tables or tabular data in the image, you should extract the data in markdown format.
+    7. You should pay attention to the financial filing and use the information to generate the description.
 
-Here is the financial filing:
+    Here is the financial filing:
 
----
-{filing_data}
----""",
-                        encode_image(image),
-                    ],
+    ---
+    {filing_data}
+    ---""",
+                            encode_image(image),
+                        ],
+                    )
                 )
-            )
+            except Exception as e:
+                print(e)
+                image_descriptions.append("Error generating image description")
         return image_descriptions
 
     def summarize_filing(self, filing_data: str) -> list[str]:
-        return self.image_description_generator.predict(
-            user_prompts=[
-                f"""You are an expert finacial analyst tasked with genrating keywords for financial filings.
+        try:
+            return self.image_description_generator.predict(
+                user_prompts=[
+                    f"""You are an expert finacial analyst tasked with genrating keywords for financial filings.
 You should generate a summary of the financial filing and a list of important keywords from
 the financial filing.
 
@@ -71,8 +76,11 @@ Here is the financial filing:
 ---
 {filing_data}
 ---"""
-            ]
-        )
+                ]
+            )
+        except Exception as e:
+            print(e)
+            return ["Error generating summary"]
 
     def load_data(
         self,
