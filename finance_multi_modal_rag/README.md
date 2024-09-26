@@ -5,8 +5,8 @@
 Install dependencies using the following commands:
 
 ```bash
-git clone https://github.com/soumik12345/physics-qa-bot
-cd physics-qa-bot
+git clone https://github.com/wandb/rag
+cd rag/finance_multi_modal_rag
 pip install -U pip uv
 uv sync
 ```
