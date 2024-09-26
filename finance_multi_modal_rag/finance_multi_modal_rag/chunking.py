@@ -13,7 +13,7 @@ import weave
 from blingfire import text_to_sentences
 from PIL import Image
 from sklearn.metrics.pairwise import cosine_distances
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 from .embedding import sync_embed
 from .utils import length_function
