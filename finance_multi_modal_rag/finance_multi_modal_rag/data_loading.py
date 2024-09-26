@@ -26,23 +26,52 @@ class EdgarDataLoader(BaseModel):
     def generate_image_description(
         self, images: list[Image.Image], filing_data: str
     ) -> list[str]:
-        return [
-            self.image_description_generator.predict(
-                user_prompts=[
-                    f"""You are an expert finacial analyst tasked with genrating
-desciptions for images in financial filings. If the image has text in it, you should first
+        image_descriptions = []
+        for image in tqdm(images, desc="Generating image descriptions:"):
+            image_descriptions.append(
+                self.image_description_generator.predict(
+                    user_prompts=[
+                        f"""You are an expert finacial analyst tasked with genrating
+desciptions for images in financial filings.
+
+Here are some rules you should follow:
+1. If the image has text in it, you should first
 generate a description of the image and then extract the text in markdown format.
+2. If the image does not have text in it, you should generate a description of the image.
+3. You should frame your reply in markdown format.
+4. The description should be a list of bullet points under the markdown header "Description of the image".
+5. The extracted text should be under the markdown header "Extracted text from the image".
+6. You should pay attention to the financial filing and use the information to generate the description.
 
 Here is the financial filing:
 
 ---
 {filing_data}
 ---""",
-                    encode_image(image),
-                ],
+                        encode_image(image),
+                    ],
+                )
             )
-            for image in tqdm(images, desc="Generating image descriptions:")
-        ]
+        return image_descriptions
+
+    def summarize_filing(self, filing_data: str) -> list[str]:
+        return self.image_description_generator.predict(
+            user_prompts=[
+                f"""You are an expert finacial analyst tasked with genrating keywords for financial filings.
+You should generate a summary of the financial filing and a list of important keywords from
+the financial filing.
+
+Here are some rules you should follow:
+1. The summary should be a list of bullet points under the markdown header "Summary of the financial filing".
+2. The keywords should be a list of keywords under the markdown header "Important keywords from the financial filing".
+
+Here is the financial filing:
+
+---
+{filing_data}
+---"""
+            ]
+        )
 
     def load_data(
         self,
@@ -63,6 +92,7 @@ Here is the financial filing:
                 "accession_no": filing.accession_no,
                 "cik": filing.cik,
                 "content": filing.markdown(),
+                "summary": self.summarize_filing(filing.markdown()),
             }
 
             current_filing_data["images"] = []
