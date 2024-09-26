@@ -1,6 +1,8 @@
 import os
 
+import filetype
 from edgar import Company
+from PIL import Image
 from pydantic import BaseModel
 from rich.progress import track
 
@@ -9,7 +11,9 @@ class EdgarDataLoader(BaseModel):
     company_name: str
 
     def load_data(
-        self, form_type: str, download_attachments: bool = False
+        self,
+        form_type: str,
+        upload_images: bool = True,
     ) -> list[dict[str, str]]:
         filings_10q = Company(self.company_name).get_filings(form=[form_type])
         filings_data = []
@@ -26,22 +30,26 @@ class EdgarDataLoader(BaseModel):
                 "content": filing.markdown(),
             }
 
-            if download_attachments:
-                attachment_texts = []
-                for idx, attachment in enumerate(filing.attachments):
-                    os.makedirs(
-                        os.path.join("./attachments", self.company_name), exist_ok=True
-                    )
-                    attachment_path = os.path.join(
-                        "./attachments",
-                        self.company_name,
-                        f"{idx}{attachment.extension}",
-                    )
-                    attachment.download(path=attachment_path)
-                    if attachment.is_text():
-                        with open(attachment_path, "r") as f:
-                            attachment_texts.append(f.read())
-                current_filing_data["attachment_texts"] = attachment_texts
+            attachment_texts = []
+            current_filing_data["images"] = []
+            for idx, attachment in enumerate(filing.attachments):
+                os.makedirs(
+                    os.path.join("./attachments", self.company_name), exist_ok=True
+                )
+                attachment_path = os.path.join(
+                    "./attachments",
+                    self.company_name,
+                    f"{idx}{attachment.extension}",
+                )
+                attachment.download(path=attachment_path)
+                if upload_images and filetype.is_image(attachment_path):
+                    image = Image.open(attachment_path)
+                    try:
+                        image.load()
+                        current_filing_data["images"].append(image)
+                    except Exception:
+                        pass
+            current_filing_data["attachment_texts"] = attachment_texts
 
             filings_data.append(current_filing_data)
 
