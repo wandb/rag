@@ -41,7 +41,8 @@ generate a description of the image and then extract the text in markdown format
 3. You should frame your reply in markdown format.
 4. The description should be a list of bullet points under the markdown header "Description of the image".
 5. The extracted text should be under the markdown header "Extracted text from the image".
-6. You should pay attention to the financial filing and use the information to generate the description.
+6. If there are tables or tabular data in the image, you should extract the data in markdown format.
+7. You should pay attention to the financial filing and use the information to generate the description.
 
 Here is the financial filing:
 
