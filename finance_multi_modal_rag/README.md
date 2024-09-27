@@ -35,7 +35,7 @@ def load_data(company_name: str, forms: list[str]):
     filings_data = []
     predictor = MultiModalPredictor(
         model_name="meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
-        base_url="http://195.242.25.198:8032/v1",
+        base_url="http://195.242.25.198:8032/v1", # Replace with your base URL
     )
     for form in forms:
         filings_data += EdgarDataLoader(
@@ -48,7 +48,7 @@ def load_data(company_name: str, forms: list[str]):
 if __name__ == "__main__":
     set_identity("<YOUR-NAME> <YOUR-EMAIL-ID>")
     weave.init(project_name="finance_multi_modal_rag")
-    load_data("TSLA", ["10-Q"])
+    load_data("TSLA", ["10-Q", "DEF 14A"])
 ```
 
 Next, we generate the chunks from our documents using the following code:
@@ -68,6 +68,26 @@ chunk_documents(
 )
 ```
 
+Next, we build the vector index and store persist the index locally using safetensors. The index is versioned using W&B Artifacts.
+
+```
+import weave
+from dotenv import load_dotenv
+
+import wandb
+from finance_multi_modal_rag.retrieval import BGERetriever
+
+load_dotenv()
+
+weave.init(project_name="finance_multi_modal_rag")
+wandb.init(project="finance_multi_modal_rag", job_type="upload")
+retriever = BGERetriever(
+    weave_chunked_dataset_address="TSLA_sec_filings_chunks:v1",
+    model_name="BAAI/bge-small-en-v1.5",
+)
+retriever.create_index(index_persist_dir="./index", artifact_name="tsla-index")
+```
+
 Finally, we can generate our responses using the following code:
 
 ```python
@@ -81,16 +101,17 @@ from finance_multi_modal_rag.retrieval import BGERetriever
 load_dotenv()
 
 weave.init(project_name="finance_multi_modal_rag")
-
+retriever = BGERetriever.from_wandb_artifact(
+    artifact_address="geekyrakshit/finance_multi_modal_rag/tsla-index:latest",
+    weave_chunked_dataset_address="TSLA_sec_filings_chunks:v1",
+    model_name="BAAI/bge-small-en-v1.5",
+)
 finace_qa_bot = FinanceQABot(
     predictor=MultiModalPredictor(
         model_name="meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
-        base_url="http://195.242.25.198:8032/v1",
+        base_url="http://195.242.25.198:8032/v1", # Replace with your base URL
     ),
-    retriever=BGERetriever(
-        weave_chunked_dataset_address="TSLA_sec_filings_chunks:v1",
-        model_name="BAAI/bge-small-en-v1.5",
-    ),
+    retriever=retriever,
     weave_corpus_dataset_address="TSLA_sec_filings:v8",
 )
 finace_qa_bot.predict(query="what did elon say in the tweets that tesla reported?")
