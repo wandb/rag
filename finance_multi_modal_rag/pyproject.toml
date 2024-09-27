@@ -1,0 +1,31 @@
+[project]
+name = "finance_multi_modal_rag"
+version = "0.0.1"
+description = "A physics QA bot"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "bm25s>=0.2.1",
+    "cohere>=5.10.0",
+    "edgartools>=2.31.1",
+    "filetype>=1.2.0",
+    "mistralai>=1.1.0",
+    "openai>=1.47.1",
+    "pillow>=10.4.0",
+    "python-dotenv>=1.0.1",
+    "sentence-transformers>=3.1.1",
+    "wandb>=0.18.1",
+    "weave>=0.51.8",
+    "pytest>=8.3.3",
+    "uv>=0.4.15",
+    "black>=24.8.0",
+    "isort>=5.13.2",
+    "ruff>=0.6.7",
+    "pip>=24.2"
+]
+
+[tool.pytest.ini_options]
+pythonpath = "."
+
+[tool.setuptools]
+py-modules = ["finance_multi_modal_rag"]

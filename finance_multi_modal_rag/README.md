@@ -1,0 +1,118 @@
+# Multi-modal RAG for Finance
+
+## Installation
+
+Install dependencies using the following commands:
+
+```bash
+git clone https://github.com/wandb/rag
+cd rag/finance_multi_modal_rag
+pip install -U pip uv
+uv sync
+```
+
+Next, you need to activate the virtual environment:
+
+```bash
+source .venv/bin/activate
+```
+
+Finally, you need to get a Cohere API key (depending on which model you use).
+
+## Usage
+
+First, you need to fetch the 10-Q filings from [Edgar database](https://www.sec.gov/edgar) and generate image descriptions using [meta-llama/Llama-3.2-90B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision-Instruct).
+
+```python
+import weave
+from edgar import set_identity
+
+from finance_multi_modal_rag.data_loading import EdgarDataLoader
+from finance_multi_modal_rag.llm_wrapper import MultiModalPredictor
+
+
+def load_data(company_name: str, forms: list[str]):
+    filings_data = []
+    predictor = MultiModalPredictor(
+        model_name="meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+        base_url="http://195.242.25.198:8032/v1", # Replace with your base URL
+    )
+    for form in forms:
+        filings_data += EdgarDataLoader(
+            company_name=company_name, image_description_generator=predictor
+        ).load_data(form)
+    weave.publish(weave.Dataset(name=f"{company_name}_sec_filings", rows=filings_data))
+    return filings_data
+
+
+if __name__ == "__main__":
+    set_identity("<YOUR-NAME> <YOUR-EMAIL-ID>")
+    weave.init(project_name="finance_multi_modal_rag")
+    load_data("TSLA", ["10-Q", "DEF 14A"])
+```
+
+Next, we generate the chunks from our documents using the following code:
+
+```python
+import weave
+from dotenv import load_dotenv
+
+from finance_multi_modal_rag.chunking import chunk_documents
+
+load_dotenv()
+
+weave.init(project_name="finance_multi_modal_rag")
+chunk_documents(
+    source_dataset_address="TSLA_sec_filings:v8",
+    target_dataset_name="TSLA_sec_filings_chunks",
+)
+```
+
+Next, we build the vector index and store persist the index locally using safetensors. The index is versioned using W&B Artifacts.
+
+```
+import weave
+from dotenv import load_dotenv
+
+import wandb
+from finance_multi_modal_rag.retrieval import BGERetriever
+
+load_dotenv()
+
+weave.init(project_name="finance_multi_modal_rag")
+wandb.init(project="finance_multi_modal_rag", job_type="upload")
+retriever = BGERetriever(
+    weave_chunked_dataset_address="TSLA_sec_filings_chunks:v1",
+    model_name="BAAI/bge-small-en-v1.5",
+)
+retriever.create_index(index_persist_dir="./index", artifact_name="tsla-index")
+```
+
+Finally, we can generate our responses using the following code:
+
+```python
+import weave
+from dotenv import load_dotenv
+
+from finance_multi_modal_rag.llm_wrapper import MultiModalPredictor
+from finance_multi_modal_rag.response_generation import FinanceQABot
+from finance_multi_modal_rag.retrieval import BGERetriever
+
+load_dotenv()
+
+weave.init(project_name="finance_multi_modal_rag")
+retriever = BGERetriever.from_wandb_artifact(
+    artifact_address="geekyrakshit/finance_multi_modal_rag/tsla-index:latest",
+    weave_chunked_dataset_address="TSLA_sec_filings_chunks:v1",
+    model_name="BAAI/bge-small-en-v1.5",
+)
+finace_qa_bot = FinanceQABot(
+    predictor=MultiModalPredictor(
+        model_name="meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+        base_url="http://195.242.25.198:8032/v1", # Replace with your base URL
+    ),
+    retriever=retriever,
+    weave_corpus_dataset_address="TSLA_sec_filings:v8",
+)
+finace_qa_bot.predict(query="what did elon say in the tweets that tesla reported?")
+```
