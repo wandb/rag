@@ -67,3 +67,31 @@ chunk_documents(
     target_dataset_name="TSLA_sec_filings_chunks",
 )
 ```
+
+Finally, we can generate our responses using the following code:
+
+```python
+import weave
+from dotenv import load_dotenv
+
+from finance_multi_modal_rag.llm_wrapper import MultiModalPredictor
+from finance_multi_modal_rag.response_generation import FinanceQABot
+from finance_multi_modal_rag.retrieval import BGERetriever
+
+load_dotenv()
+
+weave.init(project_name="finance_multi_modal_rag")
+
+finace_qa_bot = FinanceQABot(
+    predictor=MultiModalPredictor(
+        model_name="meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+        base_url="http://195.242.25.198:8032/v1",
+    ),
+    retriever=BGERetriever(
+        weave_dataset_address="TSLA_sec_filings_chunks:v0",
+        model_name="BAAI/bge-small-en-v1.5",
+    ),
+    weave_dataset_address="TSLA_sec_filings:v6",
+)
+finace_qa_bot.predict(query="what did elon say in the tweets that tesla reported?")
+```
