@@ -58,6 +58,11 @@ Here's a summary of the report along with the some important keywords and phrase
 
 {image_descriptions}\n\n
                 """
+        user_prompt += f"""You are suppossed to respond to the following query:
+
+{query}
+---
+"""
         return user_prompt.strip()
 
     @weave.op()
@@ -71,6 +76,12 @@ information provided.
 
 Here are a few rules to follow:
 1. You should pay close attention to the excerpts, especially the dates and other numbers in them.
+2. You should pay attention to the image descriptions and use them to answer the user's question.
+3. You should pay attention to the summary of the report and use it to answer the user's question.
+4. You should pay attention to the keywords and phrases present in the report and use them to answer the user's question.
+5. You should answer the user's question in detail and cite all the relevant information and references.
+6. You should not make up any information. You should only use the information provided in the excerpts.
+7. You should answer the user's question in a detailed and informative manner in English language.
             """,
             user_prompts=[user_prompt, query],
         )
