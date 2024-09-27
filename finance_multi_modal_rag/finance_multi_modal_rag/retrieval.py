@@ -7,19 +7,20 @@ from sentence_transformers import SentenceTransformer
 
 
 class BM25Retriever(weave.Model):
-    weave_dataset_address: str
+    weave_chunked_dataset_address: str
     _corpus: list[dict[str, Any]] = []
     _index: bm25s.BM25 = None
 
-    def __init__(self, weave_dataset_address: str):
-        super().__init__(weave_dataset_address=weave_dataset_address)
+    def __init__(self, weave_chunked_dataset_address: str):
+        super().__init__(weave_chunked_dataset_address=weave_chunked_dataset_address)
         self._index = bm25s.BM25()
         self.create_index()
 
     def create_index(self):
-        dataset_rows = weave.ref(self.weave_dataset_address).get().rows
+        dataset_rows = weave.ref(self.weave_chunked_dataset_address).get().rows
         self._corpus = [
-            dict(row) for row in weave.ref(self.weave_dataset_address).get().rows
+            dict(row)
+            for row in weave.ref(self.weave_chunked_dataset_address).get().rows
         ]
         self._index.index(
             bm25s.tokenize([row["cleaned_content"] for row in dataset_rows]),
@@ -49,14 +50,14 @@ class BM25Retriever(weave.Model):
 
 class BGERetriever(weave.Model):
     model_name: str
-    weave_dataset_address: str
+    weave_chunked_dataset_address: str
     _corpus: List[Dict[str, str]] = []
     _index: np.ndarray = None
     _model: SentenceTransformer = None
 
-    def __init__(self, weave_dataset_address: str, model_name: str):
+    def __init__(self, weave_chunked_dataset_address: str, model_name: str):
         super().__init__(
-            weave_dataset_address=weave_dataset_address,
+            weave_chunked_dataset_address=weave_chunked_dataset_address,
             model_name=model_name,
         )
         self._model = SentenceTransformer(self.model_name)
@@ -64,7 +65,8 @@ class BGERetriever(weave.Model):
 
     def create_index(self):
         self._corpus = [
-            dict(row) for row in weave.ref(self.weave_dataset_address).get().rows
+            dict(row)
+            for row in weave.ref(self.weave_chunked_dataset_address).get().rows
         ]
         self._index = self._model.encode(
             sentences=[row["cleaned_content"] for row in self._corpus],

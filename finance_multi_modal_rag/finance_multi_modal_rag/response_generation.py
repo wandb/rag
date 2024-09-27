@@ -8,7 +8,7 @@ from .llm_wrapper import MultiModalPredictor
 class FinanceQABot(weave.Model):
     predictor: MultiModalPredictor
     retriever: weave.Model
-    weave_dataset_address: str
+    weave_corpus_dataset_address: str
     top_k: int
     _dataset: list[dict[str, Any]] = []
 
@@ -16,17 +16,17 @@ class FinanceQABot(weave.Model):
         self,
         predictor: MultiModalPredictor,
         retriever: weave.Model,
-        weave_dataset_address: str,
+        weave_corpus_dataset_address: str,
         top_k: int = 5,
     ):
         super().__init__(
             predictor=predictor,
             retriever=retriever,
-            weave_dataset_address=weave_dataset_address,
+            weave_corpus_dataset_address=weave_corpus_dataset_address,
             top_k=top_k,
         )
         self._dataset = [
-            dict(row) for row in weave.ref(self.weave_dataset_address).get().rows
+            dict(row) for row in weave.ref(self.weave_corpus_dataset_address).get().rows
         ]
 
     def frame_user_prompt(self, query: str) -> str:
