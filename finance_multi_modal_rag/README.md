@@ -1,5 +1,9 @@
 # Multi-modal RAG for Finance
 
+A simple RAG (Retrieval-Augmented Generation) system for question-answering on [Tesla's](https://www.tesla.com/) financial filing gathered from the [SEC-EDGAR Database](https://www.sec.gov/edgar) by the [US Securities and Exchange Comission](https://www.sec.gov/). This codebase is closely inspired by the materials from the free course [RAG++ : From POC to Production](https://www.wandb.courses/courses/rag-in-production).
+
+The codebase demonstrates how to build multi-modal RAG pipelines for question-answering systems and other downstream tasks in the finance domain using [Llama3.2 Vision](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision).  
+
 ## Installation
 
 Install dependencies using the following commands:
@@ -21,7 +25,19 @@ Finally, you need to get a Cohere API key (depending on which model you use).
 
 ## Usage
 
-First, you need to fetch the 10-Q filings from [Edgar database](https://www.sec.gov/edgar) and generate image descriptions using [meta-llama/Llama-3.2-90B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision-Instruct).
+First, you need to create a corpus which acts as a source of truth for the RAG system. We do this by fetching the `10-Q` and the `DEF 14A` filings from the [Edgar database](https://www.sec.gov/edgar). Besides collecting the text, we also fetch all the images associated with the filings. In order to make it easy for chunking and indexing, we generate a comprehensive description corresponding to each image and extract all the text and tabular information using [meta-llama/Llama-3.2-90B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision-Instruct).
+
+We generate the image descriptions using a 2-stage prompting strategy:
+
+First, we ask Llama-3.2 to summarize the text content in the filing document and extract some important keywords and observations.
+
+![](./assets/trace_1.png)
+
+Next, we pass this summary and set of extracted keyworkds from the text as context along with the images to Llama-90B-Vision-Instruct and ask it to generate descriptions of the image and extract all the text and tabular data in markdown format.
+
+![](./assets/trace_3.png)
+
+You can use the following code to create your corpus by fetching filings from the [Edgar database](https://www.sec.gov/edgar) and generating the image descriptions:
 
 ```python
 import weave
