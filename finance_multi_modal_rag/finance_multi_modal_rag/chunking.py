@@ -4,7 +4,6 @@ This module contains functions and classes for splitting text into chunks based 
 Source: https://github.com/wandb/edu/blob/main/rag-advanced/notebooks/scripts/chunking.py
 """
 
-import re
 from functools import partial
 from typing import Callable, List, Optional
 
@@ -16,7 +15,7 @@ from sklearn.metrics.pairwise import cosine_distances
 from tqdm.auto import tqdm
 
 from .embedding import sync_embed
-from .utils import length_function
+from .utils import length_function_cl100k_base
 
 CHUNK_SIZE = 512
 
@@ -235,15 +234,12 @@ def chunk_single_document(
     document: dict[str, str | list[str, Image.Image]],
     document_idx: int,
     chunk_size: int = CHUNK_SIZE,
-    cohere_model: str = "command-r",
 ):
     chunker = KamradtModifiedChunker(
         avg_chunk_size=chunk_size,
-        length_function=partial(length_function, model=cohere_model),
+        length_function=length_function_cl100k_base,
     )
-    filing_date = re.findall(r"\((.*?)\)", document["filing_date"])[0].replace(
-        ", ", "-"
-    )
+    filing_date = document["filing_date"]
     text = "# Report filed at" + filing_date + "\n\n" + str(document["content"])
     text += "\n\n# Report Summary and Keywords\n\n" + str(document["summary"])
     text += "\n\n# Image Descriptions\n" + str(document["image_descriptions"])
@@ -256,7 +252,7 @@ def chunk_single_document(
                 "filing_date": filing_date,
                 "accession_no": document["accession_no"],
                 "number_of_images": len(document["images"]),
-                "parsed_tokens": length_function(chunk),
+                "parsed_tokens": length_function_cl100k_base(chunk),
             },
         }
         for chunk in chunks
@@ -267,14 +263,13 @@ def chunk_single_document(
 def chunk_documents(
     source_dataset_address: str,
     chunk_size: int = CHUNK_SIZE,
-    cohere_model: str = "command-r",
     target_dataset_name: Optional[str] = None,
 ):
     dataset_rows = [dict(row) for row in weave.ref(source_dataset_address).get().rows]
     document_chunks = []
     for row in tqdm(dataset_rows, desc="Chunking documents:"):
         document_chunks += chunk_single_document(
-            row, dataset_rows.index(row), chunk_size, cohere_model
+            row, dataset_rows.index(row), chunk_size
         )
     if target_dataset_name is not None:
         weave.publish(weave.Dataset(name=target_dataset_name, rows=document_chunks))
