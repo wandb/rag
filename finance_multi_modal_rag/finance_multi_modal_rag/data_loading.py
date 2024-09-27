@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+import re
 
 import filetype
 from edgar import Company
@@ -100,7 +101,9 @@ Here is the financial filing:
             filing_summary = self.summarize_filing(filing_markdown)
             current_filing_data = {
                 "form_type": filing.primary_doc_description,
-                "filing_date": filing.filing_date,
+                "filing_date": re.findall(r"\((.*?)\)", filing.filing_date)[0].replace(
+                    ", ", "-"
+                ),
                 "accession_no": filing.accession_no,
                 "cik": filing.cik,
                 "content": filing_markdown,
