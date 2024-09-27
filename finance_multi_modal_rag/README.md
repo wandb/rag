@@ -12,6 +12,7 @@ Install dependencies using the following commands:
 git clone https://github.com/wandb/rag
 cd rag/finance_multi_modal_rag
 pip install -U pip uv
+uv pip install torch --index-url https://download.pytorch.org/whl/cpu
 uv sync
 ```
 
