@@ -2,7 +2,7 @@
 
 A simple RAG (Retrieval-Augmented Generation) system for question-answering on [Tesla's](https://www.tesla.com/) financial filing gathered from the [SEC-EDGAR Database](https://www.sec.gov/edgar) by the [US Securities and Exchange Comission](https://www.sec.gov/). This codebase is closely inspired by the materials from the free course [RAG++ : From POC to Production](https://www.wandb.courses/courses/rag-in-production).
 
-The codebase demonstrates how to build multi-modal RAG pipelines for question-answering systems and other downstream tasks in the finance domain using [Llama3.2 Vision](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision). The codebase is also tightly integrated with [Weave](https://weave-docs.wandb.ai/), a lightweight toolkit for tracking and evaluating LLM applications, built by Weights & Biases.
+The codebase demonstrates how to build multi-modal RAG pipelines for question-answering systems and other downstream tasks in the finance domain using [Llama3.2 Vision](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision). The codebase is also tightly integrated with [Weave](https://weave-docs.wandb.ai/), a lightweight toolkit for tracking and evaluating LLM applications, built by Weights & Biases. You cam explore all the traces and datasets used in this project at [geekyrakshit/finance_multi_modal_rag](https://wandb.ai/geekyrakshit/finance_multi_modal_rag).
 
 ## Installation
 
