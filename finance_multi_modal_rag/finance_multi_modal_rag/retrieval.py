@@ -1,25 +1,26 @@
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import safetensors
 import safetensors.numpy
-import wandb
 import weave
 from sentence_transformers import SentenceTransformer
+
+import wandb
 
 
 class BGERetriever(weave.Model):
     model_name: str
     weave_chunked_dataset_address: Optional[str]
-    corpus: List[Dict[str, str]] = []
+    corpus: List[Union[Dict[str, str], str]] = []
     _index: np.ndarray = None
     _model: SentenceTransformer = None
 
     def __init__(
         self,
         model_name: str,
-        weave_chunked_dataset_address: Optional[str],
+        weave_chunked_dataset_address: Optional[str] = None,
         corpus: List[Dict[str, str]] = [],
         index: Optional[np.ndarray] = None,
     ):
@@ -55,7 +56,11 @@ class BGERetriever(weave.Model):
         artifact_name: Optional[str] = None,
     ):
         self._index = self._model.encode(
-            sentences=[row["cleaned_content"] for row in self.corpus],
+            sentences=(
+                [row["cleaned_content"] for row in self.corpus]
+                if self.weave_chunked_dataset_address
+                else self.corpus
+            ),
             normalize_embeddings=True,
         )
         if index_persist_dir:
@@ -85,10 +90,20 @@ class BGERetriever(weave.Model):
         top_k_indices = sorted_indices[:top_k].tolist()
         retrieved_pages = []
         for idx in top_k_indices:
+            retrieved_content = (
+                self.corpus[idx]["cleaned_content"]
+                if self.weave_chunked_dataset_address
+                else self.corpus[idx]
+            )
+            metadata = (
+                self.corpus[idx]["metadata"]
+                if self.weave_chunked_dataset_address
+                else {"idx": idx}
+            )
             retrieved_pages.append(
                 {
-                    "retrieved_content": self.corpus[idx]["cleaned_content"],
-                    "metadata": self.corpus[idx]["metadata"],
+                    "retrieved_content": retrieved_content,
+                    "metadata": metadata,
                 }
             )
         return retrieved_pages
