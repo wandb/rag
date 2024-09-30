@@ -79,7 +79,7 @@ class BGERetriever(weave.Model):
                 artifact.save()
 
     @weave.op()
-    def search(self, query: str, top_k: int = 5):
+    def search(self, query: str, top_k: int = 5) -> list[dict]:
         query_embeddings = self._model.encode([query], normalize_embeddings=True)
         scores = query_embeddings @ self._index.T
         sorted_indices = np.argsort(scores, axis=None)[::-1]
@@ -95,7 +95,7 @@ class BGERetriever(weave.Model):
         return retrieved_pages
 
     @weave.op()
-    def predict(self, query: str, top_k: int = 5):
+    def predict(self, query: str, top_k: int = 5) -> list[dict]:
         return self.search(
             "Generate a representation for this sentence that can be used to retrieve related articles:\n"
             + query,
@@ -112,7 +112,9 @@ class BGEImageRetriever(weave.Model):
         self._model = SentenceTransformer(self.model_name)
 
     @weave.op()
-    def search(self, query: str, image_descriptions: List[str], top_k: int = 5):
+    def search(
+        self, query: str, image_descriptions: List[str], top_k: int = 5
+    ) -> list[dict]:
         index = self._model.encode(
             sentences=image_descriptions, normalize_embeddings=True
         )
@@ -131,7 +133,9 @@ class BGEImageRetriever(weave.Model):
         return retrieved_pages
 
     @weave.op()
-    def predict(self, query: str, image_descriptions: List[str], top_k: int = 1):
+    def predict(
+        self, query: str, image_descriptions: List[str], top_k: int = 1
+    ) -> list[dict]:
         return self.search(
             "Generate a representation for this sentence that can be used to retrieve related articles:\n"
             + query,
