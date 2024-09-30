@@ -5,6 +5,7 @@ description = "A physics QA bot"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "blingfire>=0.1.8",
     "bm25s>=0.2.1",
     "cohere>=5.10.0",
     "edgartools>=2.31.1",
