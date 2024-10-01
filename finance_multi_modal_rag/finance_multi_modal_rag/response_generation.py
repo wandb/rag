@@ -91,16 +91,14 @@ Here's a summary of the report along with the some important keywords and phrase
     def predict(self, query: str):
         retrieved_chunks = self.text_retriever.predict(query=query, top_k=self.top_k)
         user_prompt = self.frame_user_prompt(query, retrieved_chunks)
-        user_prompts = [user_prompt]
-        most_relevant_image = self.fetch_most_relevant_image(query, retrieved_chunks)
-        if most_relevant_image:
-            user_prompts.append(encode_image(most_relevant_image))
-        return self.predictor.predict(
-            system_prompt="""You are an expert and highly experienced financial analyst.
-You are provided with the following excerpts from the companies 10-k filings for Tesla,
-the electric car company. You may also be provided with an image that might be relevant
-to the user's query. Your job is to answer the user's question is detail based on the
-information provided.
+        user_prompts = [
+            """
+# Instructions
+
+You are an expert and highly experienced financial analyst. You are provided with the
+following excerpts from the companies 10-k filings for Tesla, the electric car company.
+You may also be provided with an image that might be relevant to the user's query.
+Your job is to answer the user's question is detail based on the information provided.
 
 Here are a few rules to follow:
 1. You should pay close attention to the excerpts, especially the dates and other numbers in them.
@@ -112,6 +110,13 @@ Here are a few rules to follow:
 7. If the provided image is relevant to the user's query, you should use it to answer the user's question.
 8. You should not make up any information. You should only use the information provided in the excerpts.
 9. You should answer the user's question in a detailed and informative manner in English language.
-            """,
+
+"""
+            + user_prompt
+        ]
+        most_relevant_image = self.fetch_most_relevant_image(query, retrieved_chunks)
+        if most_relevant_image:
+            user_prompts.append(encode_image(most_relevant_image))
+        return self.predictor.predict(
             user_prompts=user_prompts,
         )
