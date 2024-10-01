@@ -82,9 +82,11 @@ Here's a summary of the report along with the some important keywords and phrase
                 retrieved_image_description = self.image_retriever.predict(
                     query=query, image_descriptions=chunk_image_descriptions, top_k=1
                 )
-                return self._dataset[chunk["metadata"]["document_idx"]]["images"][
-                    retrieved_image_description[0]["image_idx"]
-                ]
+                return encode_image(
+                    self._dataset[chunk["metadata"]["document_idx"]]["images"][
+                        retrieved_image_description[0]["image_idx"]
+                    ]
+                )
         return None
 
     @weave.op()
@@ -116,7 +118,10 @@ Here are a few rules to follow:
         ]
         most_relevant_image = self.fetch_most_relevant_image(query, retrieved_chunks)
         if most_relevant_image:
-            user_prompts.append(encode_image(most_relevant_image))
-        return self.predictor.predict(
-            user_prompts=user_prompts,
-        )
+            user_prompts.append(most_relevant_image)
+        return {
+            "response": self.predictor.predict(
+                user_prompts=user_prompts,
+            ),
+            "most_relevant_image": most_relevant_image,
+        }
