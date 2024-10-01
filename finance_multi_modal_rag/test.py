@@ -57,5 +57,7 @@ finace_qa_bot = FinanceQABot(
     weave_corpus_dataset_address="TSLA_sec_filings:v8",
 )
 finace_qa_bot.predict(
-    query="What are the major risks or considerations highlighted for investors?"
+    query="What are the most important figures that a Tesla investor should know?",
+    use_relevant_image=False,
+    use_image_descriptions=True,
 )

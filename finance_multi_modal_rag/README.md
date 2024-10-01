@@ -4,6 +4,8 @@ A simple RAG (Retrieval-Augmented Generation) system for question-answering on [
 
 The codebase demonstrates how to build multi-modal RAG pipelines for question-answering systems and other downstream tasks in the finance domain using [Llama3.2 Vision](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision). The codebase is also tightly integrated with [Weave](https://weave-docs.wandb.ai/), a lightweight toolkit for tracking and evaluating LLM applications, built by Weights & Biases. You cam explore all the traces and datasets used in this project at [geekyrakshit/finance_multi_modal_rag](https://wandb.ai/geekyrakshit/finance_multi_modal_rag).
 
+In order to learn more, check out the report [Llama3.2-Vision for Multi-modal RAG in Finance](https://wandb.ai/geekyrakshit/finance_multi_modal_rag/reports/Llama3-2-Vision-for-Multi-modal-RAG-in-Finance--Vmlldzo5NTIyODkw).
+
 ## Installation
 
 Install dependencies using the following commands:

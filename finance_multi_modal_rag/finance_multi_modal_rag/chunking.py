@@ -241,8 +241,6 @@ def chunk_single_document(
     )
     filing_date = document["filing_date"]
     text = f"# Report filed at {filing_date}\n\n" + str(document["content"])
-    # text += "\n\n# Report Summary and Keywords\n\n" + str(document["summary"])
-    # text += "\n\n# Image Descriptions\n" + str(document["image_descriptions"])
     chunks = chunker.split_text(text)
     return [
         {

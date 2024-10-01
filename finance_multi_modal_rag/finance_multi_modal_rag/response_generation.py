@@ -35,7 +35,7 @@ class FinanceQABot(weave.Model):
         ]
 
     @weave.op()
-    def frame_user_prompt(self, query: str, retrieved_chunks: list[dict]) -> str:
+    def frame_user_prompt(self, query: str, retrieved_chunks: list[dict], use_image_descriptions: bool) -> str:
         user_prompt = ""
         for chunk in retrieved_chunks:
             date = chunk["metadata"]["filing_date"]
@@ -53,7 +53,7 @@ Here's a summary of the report along with the some important keywords and phrase
 
 {summary}\n\n
 """
-            if chunk["metadata"]["number_of_images"] > 0:
+            if chunk["metadata"]["number_of_images"] > 0 and use_image_descriptions:
                 image_descriptions = "\n\n".join(
                     self._dataset[chunk["metadata"]["document_idx"]][
                         "image_descriptions"
@@ -90,17 +90,18 @@ Here's a summary of the report along with the some important keywords and phrase
         return None
 
     @weave.op()
-    def predict(self, query: str):
+    def predict(self, query: str, use_relevant_image: bool = True, use_image_descriptions: bool = True):
         retrieved_chunks = self.text_retriever.predict(query=query, top_k=self.top_k)
-        user_prompt = self.frame_user_prompt(query, retrieved_chunks)
+        user_prompt = self.frame_user_prompt(query, retrieved_chunks, use_image_descriptions)
         user_prompts = [
             """
 # Instructions
 
 You are an expert and highly experienced financial analyst. You are provided with the
 following excerpts from the companies 10-k filings for Tesla, the electric car company.
-You may also be provided with an image that might be relevant to the user's query.
-Your job is to answer the user's question is detail based on the information provided.
+You may also be provided with an image and several image descriptions that might be
+relevant to the user's query. Your job is to answer the user's question is detail based
+on the information provided.
 
 Here are a few rules to follow:
 1. You should pay close attention to the excerpts, especially the dates and other numbers in them.
@@ -116,7 +117,11 @@ Here are a few rules to follow:
 """
             + user_prompt
         ]
-        most_relevant_image = self.fetch_most_relevant_image(query, retrieved_chunks)
+        most_relevant_image = (
+            self.fetch_most_relevant_image(query, retrieved_chunks)
+            if use_relevant_image
+            else None
+        )
         if most_relevant_image:
             user_prompts.append(most_relevant_image)
         return {
