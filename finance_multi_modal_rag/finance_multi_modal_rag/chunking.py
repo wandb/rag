@@ -240,9 +240,9 @@ def chunk_single_document(
         length_function=length_function_cl100k_base,
     )
     filing_date = document["filing_date"]
-    text = "# Report filed at" + filing_date + "\n\n" + str(document["content"])
-    text += "\n\n# Report Summary and Keywords\n\n" + str(document["summary"])
-    text += "\n\n# Image Descriptions\n" + str(document["image_descriptions"])
+    text = f"# Report filed at {filing_date}\n\n" + str(document["content"])
+    # text += "\n\n# Report Summary and Keywords\n\n" + str(document["summary"])
+    # text += "\n\n# Image Descriptions\n" + str(document["image_descriptions"])
     chunks = chunker.split_text(text)
     return [
         {

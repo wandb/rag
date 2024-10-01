@@ -1,5 +1,3 @@
-import base64
-import io
 import os
 import re
 
@@ -10,14 +8,7 @@ from pydantic import BaseModel
 from tqdm.auto import tqdm
 
 from .llm_wrapper import MultiModalPredictor
-
-
-def encode_image(image: Image.Image) -> str:
-    byte_arr = io.BytesIO()
-    image.save(byte_arr, format="PNG")
-    encoded_string = base64.b64encode(byte_arr.getvalue()).decode("utf-8")
-    encoded_string = f"data:image/png;base64,{encoded_string}"
-    return str(encoded_string)
+from .utils import encode_image
 
 
 class EdgarDataLoader(BaseModel):
