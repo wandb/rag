@@ -1,0 +1,9 @@
+{"owner": "openai", "repo": "openai-cookbook","content_roots": ["articles", "examples"]}
+{"owner": "anthropics","repo": "anthropic-cookbook","content_roots": ["misc", "multimodal", "skills", "third_party", "tool_use"]}
+{"owner": "BerriAI", "repo": "litellm", "content_roots": ["cookbook"]}
+{"owner": "dair-ai", "repo": "Prompt-Engineering-Guide", "content_roots": ["notebooks"]}
+{"owner": "wandb", "repo": "weave", "content_roots": ["docs/notebooks"]}
+{"owner": "wandb", "repo": "edu", "content_roots": ["rag-advanced"]}
+{"owner": "cohere-ai", "repo": "notebooks", "content_roots": ["notebooks"]}
+{"owner": "jxnl", "repo": "instructor", "content_roots": ["examples"]}
+{"owner": "NirDiamant", "repo": "RAG_Techniques","content_roots": ["all_rag_techniques", "evaluation"]}
