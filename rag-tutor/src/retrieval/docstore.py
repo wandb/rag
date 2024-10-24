@@ -12,12 +12,18 @@ litellm.cache = Cache(type="disk", disk_cache_dir="data/cache/litellm")
 from src.retrieval.utils import embed_documents
 
 
-def iter_data(corpus: list[DocumentChunk], embed_field="embed_content", embed_model="text-embedding-3-small", embed_dims=512, batch_size=500):
+def iter_data(
+    corpus: list[DocumentChunk],
+    embed_field="embed_content",
+    embed_model="text-embedding-3-small",
+    embed_dims=512,
+    batch_size=500,
+):
     dict_corpus = [doc.model_dump(mode="json", exclude={"links"}) for doc in corpus]
     docs = [doc[embed_field] for doc in dict_corpus]
-    doc_batches = [docs[i: i + batch_size] for i in range(0, len(docs), batch_size)]
+    doc_batches = [docs[i : i + batch_size] for i in range(0, len(docs), batch_size)]
     corpus_batches = [
-        dict_corpus[i: i + batch_size] for i in range(0, len(dict_corpus), batch_size)
+        dict_corpus[i : i + batch_size] for i in range(0, len(dict_corpus), batch_size)
     ]
     output = []
     for doc_batch, corpus_batch in zip(doc_batches, corpus_batches):
@@ -36,7 +42,6 @@ class HybridRetriever(weave.Model):
     rerank_model: str = "cohere/rerank-english-v3.0"
     db: Any = None
     table: Any = None
-
 
     def index(self, corpus: list[DocumentChunk]):
         self.db = lancedb.connect(self.uri)
@@ -106,13 +111,13 @@ class HybridRetriever(weave.Model):
         for doc in documents:
             deduped_docs[doc["content"]] = doc
         deduped_docs = list(deduped_docs.values())
-        reranked_docs = await self.rerank(query, deduped_docs, top_n=k*2)
+        reranked_docs = await self.rerank(query, deduped_docs, top_n=k * 2)
         reranked_docs = [DocumentChunk(**doc) for doc in reranked_docs][:k]
         return reranked_docs
 
     @weave.op
-    async def invoke(self, query, k=5):
-        return await self.retrieve_and_rerank(query, k=k)
+    async def invoke(self, query, limit=5):
+        return await self.retrieve_and_rerank(query, k=limit)
 
     @classmethod
     def load(cls, uri="data/documents.db", table_name="documents"):
@@ -158,7 +163,7 @@ async def main():
     for doc in results:
         print(doc.as_str)
         print("\n\n")
-        print("-"* 100)
+        print("-" * 100)
         print("\n\n")
 
     # data_iter = iter(iter_data(corpus_chunks, batch_size=2))
@@ -166,6 +171,8 @@ async def main():
     # pprint(sample)
     #
 
+
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())
