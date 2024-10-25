@@ -1,28 +1,61 @@
 import json
 
 from fasthtml.common import *
+from starlette.middleware.cors import CORSMiddleware
 
 from pipeline.generation import call_model
 
-# Set up the app with DaisyUI and Tailwind CSS
-tlink = Script(src="https://cdn.tailwindcss.com")
+# Update script/link definitions near the top of the file
+tlink = Script(
+    src="https://cdn.tailwindcss.com",
+    referrerpolicy="no-referrer",
+)
 dlink = Link(
     rel="stylesheet",
     href="https://cdn.jsdelivr.net/npm/daisyui@4.11.1/dist/full.min.css",
+    crossorigin="anonymous",
 )
-app, rt = fast_app(hdrs=(tlink, dlink, picolink), exts="ws")
+
+app = FastHTML(hdrs=(tlink, dlink), exts="ws")
+rt = app.route
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-# Chat message component
-def ChatMessage(msg):
-    bubble_class = (
-        "chat-bubble-primary" if msg["sender"] == "User" else "chat-bubble-secondary"
-    )
-    chat_class = "chat-end" if msg["sender"] == "User" else "chat-start"
+# Chat message component with unique ID for content and audio
+def ChatMessage(msg_idx, content="", is_user=False, **kwargs):
+    bubble_class = "chat-bubble-primary" if not is_user else "chat-bubble-secondary"
+    chat_class = "chat-end" if not is_user else "chat-start"
+    header_text = "RagTutor" if not is_user else "You"
+
     return Div(
-        Div(msg["sender"], cls="chat-header"),
-        Div(msg["content"], cls=f"chat-bubble {bubble_class}"),
+        Div(header_text, cls="chat-header"),
+        Div(
+            content,
+            id=f"chat-content-{msg_idx}",
+            cls=f"chat-bubble {bubble_class}",
+        ),
+        id=f"chat-message-{msg_idx}",
         cls=f"chat {chat_class}",
+        **kwargs,
+    )
+
+
+# The input field component
+def ChatInput():
+    return Input(
+        type="text",
+        name="msg",
+        id="msg-input",
+        placeholder="Type your message...",
+        cls="input input-bordered w-full",
+        hx_swap_oob="true",
     )
 
 
@@ -30,130 +63,145 @@ def ChatMessage(msg):
 def get():
     return Titled(
         "RagTutor",
-        Div(
-            H1("RagTutor Chat"),
-            Div(id="chatlist", cls="chat-box h-[73vh] overflow-y-auto p-4"),
-            Form(
-                Group(
-                    Input(
-                        type="text",
-                        id="message-input",
-                        name="msg",
-                        placeholder="Type your message...",
-                        cls="input input-bordered w-full",
-                    ),
-                    Button("Send", type="submit", cls="btn btn-primary"),
+        Body(
+            Div(
+                H1("RagTutor Chat"),
+                Div(id="chatlist", cls="chat-box h-[73vh] overflow-y-auto"),
+                Form(
+                    Group(ChatInput(), Button("Send", cls="btn btn-primary")),
+                    ws_send=True,
+                    hx_ext="ws",
+                    ws_connect="/wscon",
+                    cls="flex space-x-2 mt-2",
                 ),
-                id="chat-form",
-                cls="flex space-x-2 mt-2 p-4",
+                # Move the Audio component inside the main Div
+                Audio(
+                    id="chat-audio",
+                    controls=True,
+                    style="display: none",
+                ),
+                cls="p-4 max-w-lg mx-auto",
             ),
-            Audio(id="response-audio", controls=True, style="display: none"),
-            cls="max-w-3xl mx-auto",
-        ),
-        Script(
-            """
-            const socket = new WebSocket(`ws://${window.location.host}/ws`);
-            const chatList = document.getElementById('chatlist');
-            const chatForm = document.getElementById('chat-form');
-            const messageInput = document.getElementById('message-input');
-            const audioPlayer = document.getElementById('response-audio');
-
-            function addMessage(message) {
-                const messageElement = document.createElement('div');
-                const bubbleClass = message.sender === 'User' ? 'chat-bubble-primary' : 'chat-bubble-secondary';
-                const chatClass = message.sender === 'User' ? 'chat-end' : 'chat-start';
-                
-                messageElement.className = `chat ${chatClass}`;
-                messageElement.innerHTML = `
-                    <div class="chat-header">${message.sender}</div>
-                    <div class="chat-bubble ${bubbleClass}">${message.text}</div>
-                `;
-                
-                chatList.appendChild(messageElement);
-                chatList.scrollTop = chatList.scrollHeight;
-            }
-
-            socket.onmessage = function(event) {
-                const message = JSON.parse(event.data);
-                addMessage(message);
-                
-                if (message.audio) {
-                    const audioData = atob(message.audio);
-                    const arrayBuffer = new ArrayBuffer(audioData.length);
-                    const view = new Uint8Array(arrayBuffer);
-                    for (let i = 0; i < audioData.length; i++) {
-                        view[i] = audioData.charCodeAt(i);
+            Script(
+                """
+                document.body.addEventListener('htmx:wsMessage', function(evt) {
+                    const message = evt.detail.message;
+                    console.log('[Client] Received WebSocket message:', message.slice(0, 100) + '...'); // Debug log
+                    
+                    try {
+                        const data = JSON.parse(message);
+                        
+                        if (data.type === "audio" && data.data) {
+                            console.log('[Client] Processing audio message'); // Debug log
+                            const audioPlayer = document.getElementById('chat-audio');
+                            if (audioPlayer) {
+                                console.log('[Client] Found audio player element'); // Debug log
+                                // Convert base64 to blob URL
+                                const audioData = atob(data.data);
+                                console.log('[Client] Decoded base64 data, length:', audioData.length); // Debug log
+                                
+                                const arrayBuffer = new ArrayBuffer(audioData.length);
+                                const view = new Uint8Array(arrayBuffer);
+                                for (let i = 0; i < audioData.length; i++) {
+                                    view[i] = audioData.charCodeAt(i);
+                                }
+                                const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+                                const audioUrl = URL.createObjectURL(blob);
+                                
+                                console.log('[Client] Created blob URL:', audioUrl); // Debug log
+                                
+                                // Set audio source and show player
+                                audioPlayer.src = audioUrl;
+                                audioPlayer.style.display = 'block';
+                                
+                                // Play the audio
+                                audioPlayer.play().catch(error => {
+                                    console.error('[Client] Error playing audio:', error); // Debug log
+                                });
+                                
+                                // Clean up the blob URL when the audio is done
+                                audioPlayer.onended = () => {
+                                    console.log('[Client] Audio playback finished'); // Debug log
+                                    URL.revokeObjectURL(audioUrl);
+                                };
+                            } else {
+                                console.error('[Client] Audio player element not found'); // Debug log
+                            }
+                        }
+                    } catch (e) {
+                        console.error('[Client] Error processing WebSocket message:', e);
                     }
-                    const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-                    const audioUrl = URL.createObjectURL(blob);
-                    audioPlayer.src = audioUrl;
-                    audioPlayer.style.display = 'block';
-                    audioPlayer.play();
-                }
-            };
-
-            chatForm.onsubmit = function(e) {
-                e.preventDefault();
-                if (messageInput.value) {
-                    const message = {
-                        sender: 'User',
-                        text: messageInput.value
-                    };
-                    // Add message to chat immediately
-                    addMessage(message);
-                    // Send to server
-                    socket.send(JSON.stringify(message));
-                    messageInput.value = '';
-                }
-            };
-
-            // Handle WebSocket connection status
-            socket.onopen = function(e) {
-                console.log("WebSocket connection established");
-            };
-
-            socket.onclose = function(e) {
-                console.log("WebSocket connection closed");
-            };
-
-            socket.onerror = function(e) {
-                console.error("WebSocket error:", e);
-            };
-            """
+                });
+                """,
+                type="module",
+            ),
         ),
     )
 
 
-@app.websocket_route("/ws")
-async def websocket_endpoint(websocket):
-    await websocket.accept()
+@app.ws("/wscon")
+async def ws(msg: str, send):
+    if not msg:
+        return
 
     try:
-        while True:
-            data = await websocket.receive_text()
-            user_message = json.loads(data)
+        msg_count = 0
+        accumulated_transcript = ""
 
-            # Call the model
-            response = await call_model(query=user_message["text"])
+        print("[Server] Starting WebSocket handler for message:", msg)  # Debug log
 
-            # Send assistant response
-            response_data = {
-                "sender": "RagTutor",
-                "text": (
-                    response["transcript"]
-                    if response["transcript"]
-                    else response["text_response"]
-                ),
-            }
-            if response.get("audio_data"):
-                response_data["audio"] = response.get("audio_data")
+        # Send user message
+        await send(
+            Div(
+                ChatMessage(msg_count, msg.rstrip(), is_user=True),
+                hx_swap_oob="beforeend",
+                id="chatlist",
+            )
+        )
+        msg_count += 1
 
-            await websocket.send_text(json.dumps(response_data))
+        # Send initial empty assistant message
+        await send(
+            Div(
+                ChatMessage(msg_count, ""),
+                hx_swap_oob="beforeend",
+                id="chatlist",
+            )
+        )
+
+        # Get streaming response generator
+        response_generator = await call_model(query=msg.rstrip())
+
+        async for chunk in response_generator:
+            if chunk["type"] == "audio":
+                print(
+                    "[Server] Received audio chunk, length:", len(chunk["data"])
+                )  # Debug log
+                await send(json.dumps({"type": "audio", "data": chunk["data"]}))
+
+            elif chunk["type"] == "transcript":
+                print(
+                    "[Server] Received transcript chunk:", chunk["content"]
+                )  # Debug log
+                # Update accumulated transcript and display
+                accumulated_transcript += chunk["content"]
+                await send(
+                    Div(
+                        accumulated_transcript,
+                        id=f"chat-content-{msg_count}",
+                        hx_swap_oob="true",
+                        cls="chat-bubble chat-bubble-primary",
+                    )
+                )
+
+        # Clear input after completion
+        await send(ChatInput())
 
     except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        await websocket.close()
+        print(f"[Server] Error in WebSocket handler: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import lancedb
@@ -187,6 +188,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
 
     asyncio.run(main())

@@ -1,10 +1,13 @@
 import asyncio
 
 import instructor
+import litellm
 import weave
 from litellm import acompletion
+from litellm.caching import Cache
 from pydantic import BaseModel, Field
 
+litellm.cache = Cache(type="disk", disk_cache_dir="data/cache/litellm")
 client = instructor.from_litellm(acompletion)
 
 
