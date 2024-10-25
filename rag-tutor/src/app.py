@@ -85,80 +85,67 @@ def get():
             ),
             Script(
                 """
-                // Log when HTMX WebSocket connects
-                document.body.addEventListener('htmx:wsOpen', function(evt) {
-                    console.log('[Client] WebSocket connection opened');
-                });
+                // Create an audio context and buffer for continuous playback
+                let audioContext;
+                let audioBuffers = [];
+                let isPlaying = false;
+
+                async function initAudioContext() {
+                    if (!audioContext) {
+                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                }
+
+                async function playNextBuffer() {
+                    if (audioBuffers.length > 0 && !isPlaying) {
+                        isPlaying = true;
+                        const audioBuffer = audioBuffers.shift();
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+                        
+                        source.onended = () => {
+                            isPlaying = false;
+                            playNextBuffer(); // Play next buffer when current one ends
+                        };
+                        
+                        source.start(0);
+                    }
+                }
 
                 // Handle incoming WebSocket messages
-                document.body.addEventListener('htmx:wsAfterMessage', function(evt) {  // Changed from htmx:wsMessage
-                    console.log('[Client] Raw event:', evt);
+                document.body.addEventListener('htmx:wsAfterMessage', async function(evt) {
                     const message = evt.detail.message;
-                    console.log('[Client] Received raw message:', message);
                     
-                    try {
-                        // Handle both string and object messages
-                        let data = message;
-                        if (typeof message === 'string') {
-                            try {
-                                data = JSON.parse(message);
-                            } catch (e) {
-                                console.log('[Client] Message is not JSON, using as-is');
+                    // Only try to parse as JSON if it starts with '{'
+                    if (typeof message === 'string' && message.trim().startsWith('{')) {
+                        try {
+                            let data = JSON.parse(message);
+                            
+                            if (data.type === "audio" && data.data) {
+                                await initAudioContext();
+                                
+                                const audioData = atob(data.data);
+                                const arrayBuffer = new ArrayBuffer(audioData.length);
+                                const view = new Uint8Array(arrayBuffer);
+                                for (let i = 0; i < audioData.length; i++) {
+                                    view[i] = audioData.charCodeAt(i);
+                                }
+                                
+                                // Decode the audio data
+                                try {
+                                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                                    audioBuffers.push(audioBuffer);
+                                    playNextBuffer();
+                                } catch (error) {
+                                    console.error('[Client] Error decoding audio:', error);
+                                }
                             }
+                        } catch (e) {
+                            console.error('[Client] Error processing audio message:', e);
                         }
-                        
-                        console.log('[Client] Processed data:', data);
-                        
-                        if (data.type === "audio" && data.data) {
-                            console.log('[Client] Processing audio chunk');
-                            const audioPlayer = document.getElementById('chat-audio');
-                            
-                            if (!audioPlayer) {
-                                console.error('[Client] Audio player not found!');
-                                return;
-                            }
-                            
-                            const audioData = atob(data.data);
-                            console.log('[Client] Decoded base64 data length:', audioData.length);
-                            
-                            const arrayBuffer = new ArrayBuffer(audioData.length);
-                            const view = new Uint8Array(arrayBuffer);
-                            for (let i = 0; i < audioData.length; i++) {
-                                view[i] = audioData.charCodeAt(i);
-                            }
-                            
-                            const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-                            const audioUrl = URL.createObjectURL(blob);
-                            
-                            console.log('[Client] Created audio URL:', audioUrl);
-                            audioPlayer.src = audioUrl;
-                            audioPlayer.style.display = 'block';
-                            
-                            audioPlayer.play().then(() => {
-                                console.log('[Client] Audio playback started');
-                            }).catch(error => {
-                                console.error('[Client] Audio playback error:', error);
-                            });
-                            
-                            audioPlayer.onended = () => {
-                                console.log('[Client] Audio playback ended');
-                                URL.revokeObjectURL(audioUrl);
-                            };
-                        }
-                    } catch (e) {
-                        console.error('[Client] Error processing message:', e);
-                        console.log('[Client] Problematic message:', message);
                     }
-                });
-
-                // Log WebSocket errors
-                document.body.addEventListener('htmx:wsError', function(evt) {
-                    console.error('[Client] WebSocket error:', evt.detail);
-                });
-
-                // Log when HTMX WebSocket closes
-                document.body.addEventListener('htmx:wsClose', function(evt) {
-                    console.log('[Client] WebSocket connection closed');
+                    // Ignore non-JSON messages (HTML content)
                 });
                 """,
                 type="module",
@@ -175,8 +162,6 @@ async def ws(msg: str, send):
     try:
         msg_count = 0
         accumulated_transcript = ""
-
-        print("[Server] Starting WebSocket handler for message:", msg)  # Debug log
 
         # Send user message
         await send(
@@ -202,14 +187,10 @@ async def ws(msg: str, send):
 
         async for chunk in response_generator:
             if chunk["type"] == "audio":
-                print("[Server] Sending audio chunk, length:", len(chunk["data"]))
                 # Make sure to send as a JSON string
                 await send(json.dumps({"type": "audio", "data": chunk["data"]}))
 
             elif chunk["type"] == "transcript":
-                print(
-                    "[Server] Received transcript chunk:", chunk["content"]
-                )  # Debug log
                 # Update accumulated transcript and display
                 accumulated_transcript += chunk["content"]
                 await send(
@@ -225,7 +206,6 @@ async def ws(msg: str, send):
         await send(ChatInput())
 
     except Exception as e:
-        print(f"[Server] Error in WebSocket handler: {e}")
         import traceback
 
         traceback.print_exc()
