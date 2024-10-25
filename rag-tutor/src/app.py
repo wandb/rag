@@ -74,63 +74,91 @@ def get():
                     ws_connect="/wscon",
                     cls="flex space-x-2 mt-2",
                 ),
-                # Move the Audio component inside the main Div
+                # Make the Audio component visible by default and add some styling
                 Audio(
                     id="chat-audio",
                     controls=True,
-                    style="display: none",
+                    style="display: block; margin: 1rem 0;",  # Changed from display: none to block
+                    cls="w-full",  # Added width class
                 ),
                 cls="p-4 max-w-lg mx-auto",
             ),
             Script(
                 """
-                document.body.addEventListener('htmx:wsMessage', function(evt) {
+                // Log when HTMX WebSocket connects
+                document.body.addEventListener('htmx:wsOpen', function(evt) {
+                    console.log('[Client] WebSocket connection opened');
+                });
+
+                // Handle incoming WebSocket messages
+                document.body.addEventListener('htmx:wsAfterMessage', function(evt) {  // Changed from htmx:wsMessage
+                    console.log('[Client] Raw event:', evt);
                     const message = evt.detail.message;
-                    console.log('[Client] Received WebSocket message:', message.slice(0, 100) + '...'); // Debug log
+                    console.log('[Client] Received raw message:', message);
                     
                     try {
-                        const data = JSON.parse(message);
-                        
-                        if (data.type === "audio" && data.data) {
-                            console.log('[Client] Processing audio message'); // Debug log
-                            const audioPlayer = document.getElementById('chat-audio');
-                            if (audioPlayer) {
-                                console.log('[Client] Found audio player element'); // Debug log
-                                // Convert base64 to blob URL
-                                const audioData = atob(data.data);
-                                console.log('[Client] Decoded base64 data, length:', audioData.length); // Debug log
-                                
-                                const arrayBuffer = new ArrayBuffer(audioData.length);
-                                const view = new Uint8Array(arrayBuffer);
-                                for (let i = 0; i < audioData.length; i++) {
-                                    view[i] = audioData.charCodeAt(i);
-                                }
-                                const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-                                const audioUrl = URL.createObjectURL(blob);
-                                
-                                console.log('[Client] Created blob URL:', audioUrl); // Debug log
-                                
-                                // Set audio source and show player
-                                audioPlayer.src = audioUrl;
-                                audioPlayer.style.display = 'block';
-                                
-                                // Play the audio
-                                audioPlayer.play().catch(error => {
-                                    console.error('[Client] Error playing audio:', error); // Debug log
-                                });
-                                
-                                // Clean up the blob URL when the audio is done
-                                audioPlayer.onended = () => {
-                                    console.log('[Client] Audio playback finished'); // Debug log
-                                    URL.revokeObjectURL(audioUrl);
-                                };
-                            } else {
-                                console.error('[Client] Audio player element not found'); // Debug log
+                        // Handle both string and object messages
+                        let data = message;
+                        if (typeof message === 'string') {
+                            try {
+                                data = JSON.parse(message);
+                            } catch (e) {
+                                console.log('[Client] Message is not JSON, using as-is');
                             }
                         }
+                        
+                        console.log('[Client] Processed data:', data);
+                        
+                        if (data.type === "audio" && data.data) {
+                            console.log('[Client] Processing audio chunk');
+                            const audioPlayer = document.getElementById('chat-audio');
+                            
+                            if (!audioPlayer) {
+                                console.error('[Client] Audio player not found!');
+                                return;
+                            }
+                            
+                            const audioData = atob(data.data);
+                            console.log('[Client] Decoded base64 data length:', audioData.length);
+                            
+                            const arrayBuffer = new ArrayBuffer(audioData.length);
+                            const view = new Uint8Array(arrayBuffer);
+                            for (let i = 0; i < audioData.length; i++) {
+                                view[i] = audioData.charCodeAt(i);
+                            }
+                            
+                            const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+                            const audioUrl = URL.createObjectURL(blob);
+                            
+                            console.log('[Client] Created audio URL:', audioUrl);
+                            audioPlayer.src = audioUrl;
+                            audioPlayer.style.display = 'block';
+                            
+                            audioPlayer.play().then(() => {
+                                console.log('[Client] Audio playback started');
+                            }).catch(error => {
+                                console.error('[Client] Audio playback error:', error);
+                            });
+                            
+                            audioPlayer.onended = () => {
+                                console.log('[Client] Audio playback ended');
+                                URL.revokeObjectURL(audioUrl);
+                            };
+                        }
                     } catch (e) {
-                        console.error('[Client] Error processing WebSocket message:', e);
+                        console.error('[Client] Error processing message:', e);
+                        console.log('[Client] Problematic message:', message);
                     }
+                });
+
+                // Log WebSocket errors
+                document.body.addEventListener('htmx:wsError', function(evt) {
+                    console.error('[Client] WebSocket error:', evt.detail);
+                });
+
+                // Log when HTMX WebSocket closes
+                document.body.addEventListener('htmx:wsClose', function(evt) {
+                    console.log('[Client] WebSocket connection closed');
                 });
                 """,
                 type="module",
@@ -174,9 +202,8 @@ async def ws(msg: str, send):
 
         async for chunk in response_generator:
             if chunk["type"] == "audio":
-                print(
-                    "[Server] Received audio chunk, length:", len(chunk["data"])
-                )  # Debug log
+                print("[Server] Sending audio chunk, length:", len(chunk["data"]))
+                # Make sure to send as a JSON string
                 await send(json.dumps({"type": "audio", "data": chunk["data"]}))
 
             elif chunk["type"] == "transcript":
