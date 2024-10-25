@@ -5,11 +5,12 @@ import litellm
 import weave
 from litellm import arerank
 from litellm.caching import Cache
-
 from src.retrieval.models import DocumentChunk
+from src.retrieval.query_expansion import query_expansion
+import asyncio
 
 litellm.cache = Cache(type="disk", disk_cache_dir="data/cache/litellm")
-from src.retrieval.utils import embed_documents
+from src.retrieval.utils import dedupe_docs, embed_documents, flatten_sequence
 
 
 def iter_data(
@@ -40,6 +41,7 @@ class HybridRetriever(weave.Model):
     embed_field: str = "embed_content"
     fts_field: str = "embed_content"
     rerank_model: str = "cohere/rerank-english-v3.0"
+    use_query_expansion: bool = True
     db: Any = None
     table: Any = None
 
@@ -56,7 +58,7 @@ class HybridRetriever(weave.Model):
 
     @weave.op
     async def retrieve(self, query, k=2):
-        query_vector = await embed_documents([query])
+        query_vector = embed_documents([query])
         query_vector = query_vector[0]
         if self.table is None:
             self.table = self.db.open_table(self.table_name)
@@ -107,17 +109,24 @@ class HybridRetriever(weave.Model):
     @weave.op
     async def retrieve_and_rerank(self, query, k=15) -> list[DocumentChunk]:
         documents = await self.retrieve(query, k=k * 20)
-        deduped_docs = {}
-        for doc in documents:
-            deduped_docs[doc["content"]] = doc
-        deduped_docs = list(deduped_docs.values())
+        deduped_docs = dedupe_docs(documents, key="content")
         reranked_docs = await self.rerank(query, deduped_docs, top_n=k * 2)
-        reranked_docs = [DocumentChunk(**doc) for doc in reranked_docs][:k]
         return reranked_docs
 
     @weave.op
     async def invoke(self, query, limit=5):
-        return await self.retrieve_and_rerank(query, k=limit)
+        if self.use_query_expansion:
+            queries = await query_expansion(query)
+            tasks = [self.retrieve_and_rerank(q, k=limit) for q in queries + [query]]
+            all_docs = await asyncio.gather(*tasks)
+            flattened_docs = flatten_sequence(all_docs)
+            deduped_docs = dedupe_docs(flattened_docs, key="content")
+            results = await self.rerank(query, deduped_docs, top_n=limit)
+
+        else:
+            results = await self.retrieve_and_rerank(query, k=limit)
+        final_results = [DocumentChunk(**doc) for doc in results][:limit]
+        return final_results
 
     @classmethod
     def load(cls, uri="data/documents.db", table_name="documents"):
@@ -158,13 +167,18 @@ async def main():
     # logger.info(f"chunked: {len(corpus_chunks)} documents")
     retriever = HybridRetriever.load()
     # retriever.index(corpus_chunks)
+    from time import perf_counter
+
+    start = perf_counter()
     results = await retriever.invoke("What is Contextual Retrieval?", 20)
+    end = perf_counter()
     print(len(results))
     for doc in results:
         print(doc.as_str)
         print("\n\n")
         print("-" * 100)
         print("\n\n")
+    print(f"Time taken: {end - start:.2f} seconds")
 
     # data_iter = iter(iter_data(corpus_chunks, batch_size=2))
     # sample = next(data_iter)

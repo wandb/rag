@@ -13,7 +13,7 @@ import markdown
 import shortuuid
 import tiktoken
 from bs4 import BeautifulSoup, Tag
-from litellm import aembedding
+from litellm import embedding
 from litellm.caching import Cache
 from lxml import etree
 from markdownify import markdownify
@@ -241,7 +241,15 @@ def cleanup_text(text: str) -> str:
     return text.strip()
 
 
-async def embed_documents(documents, model="text-embedding-3-small", dimensions=512):
-    response = await aembedding(model=model, input=documents, dimensions=dimensions)
+def embed_documents(documents, model="text-embedding-3-small", dimensions=512):
+    response = embedding(model=model, input=documents, dimensions=dimensions)
     vectors = [item["embedding"] for item in response.data]
     return vectors
+
+
+def dedupe_docs(docs: list[dict], key: str) -> list[dict]:
+    deduped_docs = {}
+    for doc in docs:
+        deduped_docs[doc[key]] = doc
+    deduped_docs = list(deduped_docs.values())
+    return deduped_docs
