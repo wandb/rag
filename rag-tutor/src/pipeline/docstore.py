@@ -5,9 +5,9 @@ import litellm
 import weave
 from litellm import arerank
 from litellm.caching import Cache
+
+from src.pipeline.query_expansion import query_expansion
 from src.retrieval.models import DocumentChunk
-from src.retrieval.query_expansion import query_expansion
-import asyncio
 
 litellm.cache = Cache(type="disk", disk_cache_dir="data/cache/litellm")
 from src.retrieval.utils import dedupe_docs, embed_documents, flatten_sequence

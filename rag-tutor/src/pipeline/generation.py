@@ -3,7 +3,7 @@ from typing import Any
 
 from litellm import acompletion
 
-from src.retrieval.docstore import HybridRetriever
+from src.pipeline.docstore import HybridRetriever
 
 SYSTEM_PROMPT = """You are a professional interactive personal tutor and an expert at explaining topics related to building LLM applications. Your task is to educate users about this subject using provided and retrieved information.
 
