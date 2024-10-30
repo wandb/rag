@@ -1,215 +1,321 @@
 import json
+from datetime import datetime
 
 from fasthtml.common import *
-from starlette.middleware.cors import CORSMiddleware
 
-from pipeline.generation import call_model
+static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
-# Update script/link definitions near the top of the file
-tlink = Script(
-    src="https://cdn.tailwindcss.com",
-    referrerpolicy="no-referrer",
-)
+tlink = Script(src="https://cdn.tailwindcss.com")
+custom_style = StyleX(fname=f"{static_dir}/style.css")
+
 dlink = Link(
     rel="stylesheet",
     href="https://cdn.jsdelivr.net/npm/daisyui@4.11.1/dist/full.min.css",
-    crossorigin="anonymous",
+)
+leaflet_css = Link(
+    rel="stylesheet", href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
 )
 
-app = FastHTML(hdrs=(tlink, dlink), exts="ws")
-rt = app.route
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+leaflet_js = Script(src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js")
+htmx_ws = Script(src="https://unpkg.com/htmx-ext-ws@2.0.0/ws.js")
+fonts = (
+    Link(
+        rel="stylesheet",
+        href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap",
+    ),
+)
+app, rt = fast_app(
+    static_path=os.path.dirname(static_dir),
+    pico=True,
+    htmx=True,
+    ws_hdr=True,
+    exts="ws",
+    hdrs=(
+        tlink,
+        dlink,
+        leaflet_css,
+        custom_style,
+        leaflet_js,
+        htmx_ws,
+        fonts,
+        Script(src="/static/wavtools/index.js", type="module"),
+        Script(src="/static/events.js", type="text/javascript"),
+    ),
 )
 
+# Store start time for event timestamps
+start_time = None
 
-# Chat message component with unique ID for content and audio
-def ChatMessage(msg_idx, content="", is_user=False, **kwargs):
-    bubble_class = "chat-bubble-primary" if not is_user else "chat-bubble-secondary"
-    chat_class = "chat-end" if not is_user else "chat-start"
-    header_text = "RagTutor" if not is_user else "You"
-
-    return Div(
-        Div(header_text, cls="chat-header"),
-        Div(
-            content,
-            id=f"chat-content-{msg_idx}",
-            cls=f"chat-bubble {bubble_class}",
-        ),
-        id=f"chat-message-{msg_idx}",
-        cls=f"chat {chat_class}",
-        **kwargs,
-    )
-
-
-# The input field component
-def ChatInput():
-    return Input(
-        type="text",
-        name="msg",
-        id="msg-input",
-        placeholder="Type your message...",
-        cls="input input-bordered w-full",
-        hx_swap_oob="true",
-    )
+# Store conversation state
+conversation_items = []
 
 
 @rt("/")
 def get():
-    return Titled(
-        "RagTutor",
-        Body(
+    return Container(
+        Div(
+            # Top Bar
             Div(
-                H1("RagTutor Chat"),
-                Div(id="chatlist", cls="chat-box h-[73vh] overflow-y-auto"),
-                Form(
-                    Group(ChatInput(), Button("Send", cls="btn btn-primary")),
-                    ws_send=True,
-                    hx_ext="ws",
-                    ws_connect="/wscon",
-                    cls="flex space-x-2 mt-2",
+                Span("realtime console", style="margin-left:12px"),
+                Div(style="flex-grow:1"),  # Spacer
+                Button(
+                    "connect", id="connect-btn", hx_post="/connect", hx_swap="outerHTML"
                 ),
-                # Make the Audio component visible by default and add some styling
-                Audio(
-                    id="chat-audio",
-                    controls=True,
-                    style="display: block; margin: 1rem 0;",  # Changed from display: none to block
-                    cls="w-full",  # Added width class
+                cls="top-bar",
+            ),
+            # Main Content
+            Div(
+                # Left Panel (Events & Conversation)
+                Div(
+                    # Events Panel
+                    Div(
+                        # Events Section
+                        Div(
+                            H3("events", style="margin:0 0 16px 0"),
+                            Div(
+                                P("awaiting connection..."),
+                                id="event-log",
+                                cls="event-log",
+                            ),
+                            cls="events-section",
+                        ),
+                        # Conversation Section
+                        Div(
+                            H3("conversation", style="margin:0 0 16px 0"),
+                            Div(
+                                P("awaiting connection..."),
+                                id="conversation-content",
+                            ),
+                            cls="conversation",
+                        ),
+                        # Controls
+                        Div(
+                            Button(
+                                "Push to Talk",
+                                id="ptt-btn",
+                                disabled="disabled",
+                            ),
+                            cls="controls",
+                        ),
+                        cls="events-panel",
+                    ),
+                    cls="main-content",
                 ),
-                cls="p-4 max-w-lg mx-auto",
+                cls="console-layout",
+                id="ws-container",  # Keep the ID but remove WebSocket attributes
             ),
-            Script(
-                """
-                // Create an audio context and buffer for continuous playback
-                let audioContext;
-                let audioBuffers = [];
-                let isPlaying = false;
+        )
+    )
 
-                async function initAudioContext() {
-                    if (!audioContext) {
-                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    }
-                }
 
-                async function playNextBuffer() {
-                    if (audioBuffers.length > 0 && !isPlaying) {
-                        isPlaying = true;
-                        const audioBuffer = audioBuffers.shift();
-                        const source = audioContext.createBufferSource();
-                        source.buffer = audioBuffer;
-                        source.connect(audioContext.destination);
-                        
-                        source.onended = () => {
-                            isPlaying = false;
-                            playNextBuffer(); // Play next buffer when current one ends
-                        };
-                        
-                        source.start(0);
-                    }
-                }
+@rt("/connect")
+def post():
+    global start_time
+    start_time = datetime.now()
 
-                // Handle incoming WebSocket messages
-                document.body.addEventListener('htmx:wsAfterMessage', async function(evt) {
-                    const message = evt.detail.message;
-                    
-                    // Only try to parse as JSON if it starts with '{'
-                    if (typeof message === 'string' && message.trim().startsWith('{')) {
-                        try {
-                            let data = JSON.parse(message);
-                            
-                            if (data.type === "audio" && data.data) {
-                                await initAudioContext();
-                                
-                                const audioData = atob(data.data);
-                                const arrayBuffer = new ArrayBuffer(audioData.length);
-                                const view = new Uint8Array(arrayBuffer);
-                                for (let i = 0; i < audioData.length; i++) {
-                                    view[i] = audioData.charCodeAt(i);
-                                }
-                                
-                                // Decode the audio data
-                                try {
-                                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                                    audioBuffers.push(audioBuffer);
-                                    playNextBuffer();
-                                } catch (error) {
-                                    console.error('[Client] Error decoding audio:', error);
-                                }
-                            }
-                        } catch (e) {
-                            console.error('[Client] Error processing audio message:', e);
-                        }
-                    }
-                    // Ignore non-JSON messages (HTML content)
-                });
-                """,
-                type="module",
+    return (
+        Button(
+            "disconnect", id="connect-btn", hx_post="/disconnect", hx_swap="outerHTML"
+        ),
+        Div(
+            Div(
+                Div(
+                    # Events Panel
+                    Div(
+                        H3("events", style="margin:0 0 16px 0"),
+                        Div(
+                            id="event-log",
+                            cls="event-log",
+                        ),
+                        cls="events-section",
+                    ),
+                    # Conversation Section
+                    Div(
+                        H3("conversation", style="margin:0 0 16px 0"),
+                        Div(
+                            id="conversation-content",
+                            cls="conversation",
+                        ),
+                        cls="conversation",
+                    ),
+                    # Controls Section
+                    Div(
+                        Button(
+                            "Push to Talk",
+                            id="ptt-btn",
+                            disabled=None,
+                            ws_send="audioMessage",
+                            hx_trigger="audioMessage",
+                        ),
+                        cls="controls",
+                    ),
+                    cls="events-panel",
+                ),
+                cls="main-content",
             ),
+            cls="console-layout",
+            id="ws-container",
+            hx_ext="ws",
+            ws_connect="/wscon",
+            hx_swap_oob="true",
+        ),
+        # Update the event log
+        Div(
+            Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+            Span("Connected", cls="event-type"),
+            Span("WebSocket connection established", cls="event-data"),
+            cls="event-item",
+            id="event-log",
+            hx_swap_oob="true",
         ),
     )
 
 
-@app.ws("/wscon")
-async def ws(msg: str, send):
-    if not msg:
+@rt("/disconnect")
+def post():
+    global start_time
+    start_time = None
+
+    return (
+        Button("connect", id="connect-btn", hx_post="/connect", hx_swap="outerHTML"),
+        Button(
+            "Push to Talk",
+            id="ptt-btn",
+            disabled="disabled",
+            hx_swap_oob="true",
+        ),
+        Div(
+            Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+            Span("Disconnected", cls="event-type"),
+            Span("WebSocket connection closed", cls="event-data"),
+            cls="event-item",
+            id="event-log",
+            hx_swap_oob="true",
+        ),
+    )
+
+
+async def on_connect(send):
+    try:
+        print("New WebSocket connection established")
+        message = Div(
+            Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+            Span("Connected", cls="event-type"),
+            Span("New WebSocket connection established", cls="event-data"),
+            cls="event-item",
+            id="event-log",
+            hx_swap_oob="beforeend",
+        )
+        await send(message)
+    except Exception as e:
+        print(f"Error sending initial message: {e}")
+
+
+async def on_disconnect():
+    print("WebSocket disconnected")
+
+
+@app.ws("/wscon", conn=on_connect, disconn=on_disconnect)
+async def myws(data, send):
+    print(f"{data=}")
+
+    # Skip empty messages (like initial connection)
+    if not data:
+        print("Skipping empty message")
         return
 
     try:
-        msg_count = 0
-        accumulated_transcript = ""
-
-        # Send user message
-        await send(
-            Div(
-                ChatMessage(msg_count, msg.rstrip(), is_user=True),
-                hx_swap_oob="beforeend",
-                id="chatlist",
-            )
-        )
-        msg_count += 1
-
-        # Send initial empty assistant message
-        await send(
-            Div(
-                ChatMessage(msg_count, ""),
-                hx_swap_oob="beforeend",
-                id="chatlist",
-            )
-        )
-
-        # Get streaming response generator
-        response_generator = await call_model(query=msg.rstrip())
-
-        async for chunk in response_generator:
-            if chunk["type"] == "audio":
-                # Make sure to send as a JSON string
-                await send(json.dumps({"type": "audio", "data": chunk["data"]}))
-
-            elif chunk["type"] == "transcript":
-                # Update accumulated transcript and display
-                accumulated_transcript += chunk["content"]
+        try:
+            # Handle different message types
+            msg_type = data.get("type")
+            if msg_type == "event":
                 await send(
                     Div(
-                        accumulated_transcript,
-                        id=f"chat-content-{msg_count}",
-                        hx_swap_oob="true",
-                        cls="chat-bubble chat-bubble-primary",
+                        Span(
+                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
+                        ),
+                        Span("Event received", cls="event-type"),
+                        Span(data.get("data", ""), cls="event-data"),
+                        cls="event-item",
+                        id="event-log",
+                        hx_swap_oob="beforeend",
+                    )
+                )
+            elif msg_type == "audio":
+                # Handle audio messages
+                audio_data = data.get("data")
+                print(
+                    f"Received audio data of length: {len(audio_data) if audio_data else 0}"
+                )
+
+                # Create an audio player for the received audio data
+                if audio_data:
+                    await send(
+                        Div(
+                            # Audio player
+                            Audio(
+                                src=f"data:audio/wav;base64,{audio_data}",
+                                controls=True,
+                                preload="auto",
+                            ),
+                            # Add timestamp and details
+                            P(
+                                datetime.now().strftime("%H:%M:%S"),
+                                style="margin:4px 0; color:#666;",
+                            ),
+                            id="conversation-content",
+                            hx_swap_oob="beforeend",
+                        )
+                    )
+
+                    # Also log the event
+                    await send(
+                        Div(
+                            Span(
+                                datetime.now().strftime("%H:%M:%S"),
+                                cls="event-timestamp",
+                            ),
+                            Span("Audio received", cls="event-type"),
+                            Span(f"Length: {len(audio_data)} bytes", cls="event-data"),
+                            cls="event-item",
+                            id="event-log",
+                            hx_swap_oob="beforeend",
+                        )
+                    )
+            else:
+                # Handle raw text as a generic message
+                await send(
+                    Div(
+                        Span(
+                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
+                        ),
+                        Span("Message received", cls="event-type"),
+                        Span(str(data), cls="event-data"),
+                        cls="event-item",
+                        id="event-log",
+                        hx_swap_oob="beforeend",
                     )
                 )
 
-        # Clear input after completion
-        await send(ChatInput())
+        except json.JSONDecodeError:
+            # Handle raw text messages
+            print("Received raw text message")
+            await send(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Text received", cls="event-type"),
+                    Span(msg, cls="event-data"),
+                    cls="event-item",
+                    id="event-log",
+                    hx_swap_oob="beforeend",
+                )
+            )
 
     except Exception as e:
+        print(f"Error processing message: {str(e)}")
         import traceback
 
         traceback.print_exc()
 
 
-if __name__ == "__main__":
-    serve()
+serve()
