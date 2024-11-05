@@ -184,3 +184,29 @@ button {
     border-radius: 5px;
     background: #f0f0f0;
 }
+
+.audio-player-container {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px;
+    margin: 8px 0;
+}
+
+.play-btn {
+    background: #2196F3;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.play-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.audio-visualizer {
+    border-radius: 4px;
+}

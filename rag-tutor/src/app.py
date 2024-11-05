@@ -146,8 +146,8 @@ def post():
                             "Push to Talk",
                             id="ptt-btn",
                             disabled=None,
-                            ws_send="audioMessage",
-                            hx_trigger="audioMessage",
+                            # ws_send="audioMessage",
+                            # hx_trigger="audioMessage",
                         ),
                         cls="controls",
                     ),
@@ -159,6 +159,8 @@ def post():
             id="ws-container",
             hx_ext="ws",
             ws_connect="/wscon",
+            ws_send=True,
+            hx_trigger="audioMessage",
             hx_swap_oob="true",
         ),
         # Update the event log
@@ -219,7 +221,6 @@ async def on_disconnect():
 
 @app.ws("/wscon", conn=on_connect, disconn=on_disconnect)
 async def myws(data, send):
-    print(f"{data=}")
 
     # Skip empty messages (like initial connection)
     if not data:
@@ -245,20 +246,27 @@ async def myws(data, send):
                 )
             elif msg_type == "audio":
                 audio_data = data.get("data")
-                print(
-                    f"Received audio data of length: {len(audio_data) if audio_data else 0}"
-                )
-
                 if audio_data:
                     await send(
                         Div(
-                            # Instead of Audio element, we'll use a div with custom attributes
+                            # Audio player container with visualization
                             Div(
-                                data_audio=audio_data,  # Base64 audio data
-                                cls="stream-audio-chunk",
-                                _="on load call window.playAudioChunk(me)",
+                                # Audio controls
+                                Button(
+                                    "▶️ Play",
+                                    cls="play-btn",
+                                    onclick="playAudioChunk(this.parentElement)",
+                                ),
+                                # Visualization canvas
+                                Canvas(
+                                    cls="audio-visualizer",
+                                    style="width:100%; height:50px; background:#f0f0f0; margin:4px 0;",
+                                ),
+                                # Hidden audio data
+                                data_audio=audio_data,
+                                cls="audio-player-container",
                             ),
-                            # Add timestamp and details
+                            # Keep the timestamp
                             P(
                                 datetime.now().strftime("%H:%M:%S"),
                                 style="margin:4px 0; color:#666;",
