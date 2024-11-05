@@ -5,12 +5,14 @@ let recorder;
 let isRecording = false;
 let isProcessing = false;
 
+// Add visualization intervals tracking
+const visualizationIntervals = new Map();
 // Recording functions
 async function startRecording() {
     try {
         // Prevent multiple simultaneous operations
         if (isProcessing || isRecording) {
-            console.log('Recording operation in progress, please wait');
+            // console.log('Recording operation in progress, please wait');
             return;
         }
 
@@ -51,7 +53,7 @@ async function startRecording() {
 
         await recorder.record();
         isRecording = true;
-        console.log('Recording started');
+        // console.log('Recording started');
     } catch (error) {
         console.error('Start recording error:', error);
         // Clean up on error
@@ -70,7 +72,7 @@ async function startRecording() {
 
 async function stopRecording() {
     if (!isRecording || isProcessing) {
-        console.log('No active recording or processing in progress');
+        // console.log('No active recording or processing in progress');
         return;
     }
 
@@ -78,7 +80,7 @@ async function stopRecording() {
         isProcessing = true;
 
         if (!recorder) {
-            console.log('Recorder not initialized');
+            // console.log('Recorder not initialized');
             return;
         }
 
@@ -192,7 +194,7 @@ async function initializeAudioPlayer(autoplay = false) {
             }
         });
 
-        console.log('Audio player initialized');
+        // console.log('Audio player initialized');
     } catch (error) {
         console.error('Error initializing audio player:', error);
     }
@@ -313,17 +315,17 @@ htmx.config.wsBinaryType = 'blob';
 
 // WebSocket Connection Lifecycle Events
 htmx.on('htmx:wsConnecting', (evt) => {
-    console.log('Connecting to WebSocket...', evt.detail.elt.id);
+    // console.log('Connecting to WebSocket...', evt.detail.elt.id);
 });
 
 htmx.on('htmx:wsOpen', async (evt) => {
-    console.log('WebSocket Connected', evt.detail.elt.id);
+    // console.log('WebSocket Connected', evt.detail.elt.id);
     await initializeAudioPlayer(false);
 });
 
 // Clean up when WebSocket closes
 htmx.on('htmx:wsClose', async () => {
-    console.log('WebSocket connection closed');
+    // console.log('WebSocket connection closed');
     audioChunks = []; // Clear stored chunks
 
     if (streamPlayer) {
@@ -350,16 +352,16 @@ htmx.on('htmx:wsConfigSend', (evt) => {
             type: 'audio',
             ...triggerEvent.detail
         });
-        console.log('Configured WebSocket message:', evt.detail.messageBody.substring(0, 100) + '...');
+        // console.log('Configured WebSocket message:', evt.detail.messageBody.substring(0, 100) + '...');
     }
 });
 
 htmx.on('htmx:wsBeforeSend', (evt) => {
-    console.log('Sending audio data from elt:', evt.detail.elt);
+    // console.log('Sending audio data from elt:', evt.detail.elt);
 });
 
 htmx.on('htmx:wsAfterSend', (evt) => {
-    console.log('Audio data sent successfully from elt:', evt.detail.elt);
+    // console.log('Audio data sent successfully from elt:', evt.detail.elt);
 });
 
 htmx.on('htmx:wsBeforeMessage', async function (evt) {
@@ -444,7 +446,7 @@ htmx.on('htmx:beforeRequest', async function (evt) {
 htmx.on('htmx:afterSwap', function (evt) {
     const pttButton = document.getElementById('ptt-btn');
     if (pttButton) {
-        console.log('Button swapped, new disabled state:', pttButton.disabled);
+        // console.log('Button swapped, new disabled state:', pttButton.disabled);
     }
     if (evt.detail.target.id === 'event-log') {
         evt.detail.target.scrollTop = evt.detail.target.scrollHeight;

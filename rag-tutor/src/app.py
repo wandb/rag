@@ -304,19 +304,6 @@ async def myws(data, send):
                     chunks = get_audio_chunks("speech.mp3")
                     print(f"Sending {len(chunks)} audio chunks")
                     for i, chunk in enumerate(chunks):
-                        await send(
-                            Div(
-                                Span(
-                                    datetime.now().strftime("%H:%M:%S"),
-                                    cls="event-timestamp",
-                                ),
-                                Span("Audio chunk sent", cls="event-type"),
-                                Span(f"Chunk {i+1}/{len(chunks)}", cls="event-data"),
-                                cls="event-item",
-                                id="event-log",
-                                hx_swap_oob="beforeend",
-                            )
-                        )
 
                         await send(
                             json.dumps(
