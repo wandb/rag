@@ -199,15 +199,6 @@ def post():
             _="on htmx:wsAfterMessage if event.detail.message.type === 'audio' call processAudioChunk(event.detail.message.data)",
             hx_swap_oob="true",
         ),
-        # Update the event log
-        Div(
-            Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-            Span("Connected", cls="event-type"),
-            Span("WebSocket connection established", cls="event-data"),
-            cls="event-item",
-            id="event-log",
-            hx_swap_oob="true",
-        ),
     )
 
 
@@ -225,12 +216,66 @@ def post():
             hx_swap_oob="true",
         ),
         Div(
-            Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-            Span("Disconnected", cls="event-type"),
-            Span("WebSocket connection closed", cls="event-data"),
-            cls="event-item",
-            id="event-log",
+            Div(
+                Div(
+                    # Events Panel
+                    Div(
+                        H3("events", style="margin:0 0 16px 0"),
+                        Div(
+                            id="event-log",
+                            cls="event-log",
+                        ),
+                        cls="events-section",
+                    ),
+                    # Conversation Section
+                    Div(
+                        H3("conversation", style="margin:0 0 16px 0"),
+                        Div(
+                            Audio(
+                                id="audio-player",
+                                controls=True,
+                                preload="auto",
+                                disabled=False,
+                            ),
+                            id="conversation-content",
+                        ),
+                        cls="conversation",
+                    ),
+                    # Controls Section
+                    Div(
+                        Button(
+                            "Push to Talk",
+                            id="ptt-btn",
+                            disabled=None,
+                        ),
+                        cls="controls",
+                    ),
+                    cls="events-panel",
+                ),
+                cls="main-content",
+            ),
+            # Add a hidden div to hold the audio stream
+            Div(id="audio-stream-container", style="display:none;"),
+            cls="console-layout",
+            id="ws-container",
+            hx_ext="ws",
+            ws_connect="/wscon",
+            ws_send=True,
+            hx_trigger="audioMessage",
+            _="on htmx:wsAfterMessage if event.detail.message.type === 'audio' call processAudioChunk(event.detail.message.data)",
             hx_swap_oob="true",
+        ),
+        # Update the event log
+        Div(
+            Div(
+                Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                Span("Disconnected", cls="event-type"),
+                Span("WebSocket connection closed", cls="event-data"),
+                cls="event-item",
+            ),
+            cls="event-log",
+            id="event-log",
+            hx_swap_oob="beforeend",
         ),
     )
 
@@ -239,10 +284,13 @@ async def on_connect(send):
     try:
         print("New WebSocket connection established")
         message = Div(
-            Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-            Span("Connected", cls="event-type"),
-            Span("New WebSocket connection established", cls="event-data"),
-            cls="event-item",
+            Div(
+                Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                Span("Connected", cls="event-type"),
+                Span("New WebSocket connection established", cls="event-data"),
+                cls="event-item",
+            ),
+            cls="event-log",
             id="event-log",
             hx_swap_oob="beforeend",
         )
@@ -272,10 +320,15 @@ async def myws(data, send):
                 myws.current_task.cancel()
             await send(
                 Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Cancelled", cls="event-type"),
-                    Span("Audio streaming cancelled", cls="event-data"),
-                    cls="event-item",
+                    Div(
+                        Span(
+                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
+                        ),
+                        Span("Cancelled", cls="event-type"),
+                        Span("Audio streaming cancelled", cls="event-data"),
+                        cls="event-item",
+                    ),
+                    cls="event-log",
                     id="event-log",
                     hx_swap_oob="beforeend",
                 )
@@ -288,12 +341,16 @@ async def myws(data, send):
                 print("Received audio data")
                 await send(
                     Div(
-                        Span(
-                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
+                        Div(
+                            Span(
+                                datetime.now().strftime("%H:%M:%S"),
+                                cls="event-timestamp",
+                            ),
+                            Span("Audio received", cls="event-type"),
+                            Span(f"Length: {len(audio_data)} bytes", cls="event-data"),
+                            cls="event-item",
                         ),
-                        Span("Audio received", cls="event-type"),
-                        Span(f"Length: {len(audio_data)} bytes", cls="event-data"),
-                        cls="event-item",
+                        cls="event-log",
                         id="event-log",
                         hx_swap_oob="beforeend",
                     )
@@ -325,14 +382,17 @@ async def myws(data, send):
             # Handle other event types
             await send(
                 Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Event received", cls="event-type"),
-                    Span(
-                        str(data.get("data", "")),
+                    Div(
+                        Span(
+                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
+                        ),
+                        Span("Event received", cls="event-type"),
+                        Span(str(data.get("data", "")), cls="event-data"),
                         cls="event-item",
-                        id="event-log",
-                        hx_swap_oob="beforeend",
                     ),
+                    cls="event-log",
+                    id="event-log",
+                    hx_swap_oob="beforeend",
                 )
             )
 

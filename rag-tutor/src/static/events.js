@@ -12,15 +12,14 @@ async function startRecording() {
     try {
         // Prevent multiple simultaneous operations
         if (isProcessing || isRecording) {
-            // console.log('Recording operation in progress, please wait');
             return;
         }
 
         isProcessing = true;
 
-        // Send cancel event using HTMX WebSocket
+        // Only send cancel event if there are existing audio chunks
         const wsContainer = document.getElementById('ws-container');
-        if (wsContainer) {
+        if (wsContainer && audioChunks.length > 0) {
             const eventDetail = {
                 type: 'cancel',
                 data: 'Cancel current audio stream'
