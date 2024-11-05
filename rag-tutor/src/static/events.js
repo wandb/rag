@@ -1,28 +1,90 @@
 // Audio recording functionality
 let recorder;
 
+// Add state tracking
+let isRecording = false;
+let isProcessing = false;
+
 // Recording functions
 async function startRecording() {
     try {
-        if (!recorder) {
-            console.error('Recorder not initialized');
+        // Prevent multiple simultaneous operations
+        if (isProcessing || isRecording) {
+            console.log('Recording operation in progress, please wait');
             return;
         }
+
+        isProcessing = true;
+
+        // Send cancel event using HTMX WebSocket
+        const wsContainer = document.getElementById('ws-container');
+        if (wsContainer) {
+            const eventDetail = {
+                type: 'cancel',
+                data: 'Cancel current audio stream'
+            };
+
+            const audioMessageEvent = new CustomEvent('audioMessage', { bubbles: true, detail: eventDetail });
+            wsContainer.dispatchEvent(audioMessageEvent);
+        }
+
+        // Reset audio player before starting new recording
+        if (streamPlayer) {
+            await streamPlayer.reset();
+        }
+        audioChunks = [];
+        isFirstChunk = true;
+
+        // Reinitialize recorder if needed
+        if (!recorder) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const tempContext = new AudioContext();
+            const actualSampleRate = tempContext.sampleRate;
+            tempContext.close();
+
+            recorder = new WavRecorder({
+                sampleRate: actualSampleRate,
+                outputToSpeakers: false
+            });
+            await recorder.begin();
+        }
+
         await recorder.record();
+        isRecording = true;
         console.log('Recording started');
     } catch (error) {
         console.error('Start recording error:', error);
+        // Clean up on error
+        if (recorder) {
+            try {
+                await recorder.quit();
+                recorder = null;
+            } catch (cleanupError) {
+                console.error('Error during cleanup:', cleanupError);
+            }
+        }
+    } finally {
+        isProcessing = false;
     }
 }
 
 async function stopRecording() {
-    if (!recorder) {
-        console.log('Recorder not initialized');
+    if (!isRecording || isProcessing) {
+        console.log('No active recording or processing in progress');
         return;
     }
 
     try {
+        isProcessing = true;
+
+        if (!recorder) {
+            console.log('Recorder not initialized');
+            return;
+        }
+
         const result = await recorder.end();
+        isRecording = false;
+
         const base64Data = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
@@ -50,8 +112,6 @@ async function stopRecording() {
 
             const audioMessageEvent = new CustomEvent('audioMessage', { bubbles: true, detail: eventDetail });
             wsContainer.dispatchEvent(audioMessageEvent);
-        } else {
-            console.error('WebSocket container not found');
         }
 
         // Reinitialize recorder
@@ -68,6 +128,7 @@ async function stopRecording() {
             await recorder.begin();
         } catch (initError) {
             console.error('Failed to reinitialize recorder:', initError);
+            recorder = null;
         }
 
     } catch (error) {
@@ -80,6 +141,8 @@ async function stopRecording() {
                 console.error('Error during cleanup:', cleanupError);
             }
         }
+    } finally {
+        isProcessing = false;
     }
 }
 
@@ -99,13 +162,11 @@ async function initializeAudioPlayer(autoplay = false) {
             return;
         }
 
-        // Initialize WavStreamPlayer with correct sample rate
+        // Initialize WavStreamPlayer and connect to audio element
         streamPlayer = new WavStreamPlayer({
-            sampleRate: 44100,
-            bufferSize: 4096
+            sampleRate: 44100
         });
-
-        await streamPlayer.connect();
+        await streamPlayer.connect(audioElement);
 
         // Clear existing chunks and state
         audioChunks = [];
@@ -145,6 +206,14 @@ async function processAudioChunk(base64Data) {
     try {
         if (!streamPlayer) {
             await initializeAudioPlayer();
+        }
+
+        // For the first chunk, reset everything
+        if (isFirstChunk) {
+            audioChunks = []; // Clear existing chunks
+            if (streamPlayer) {
+                await streamPlayer.reset();
+            }
         }
 
         // Convert base64 to binary data
@@ -387,7 +456,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // PTT button event listeners
     document.addEventListener('mousedown', function (event) {
         const pttButton = event.target.closest('#ptt-btn');
-        if (pttButton && !pttButton.disabled) {
+        if (pttButton && !pttButton.disabled && !isProcessing) {
             startRecording();
             pttButton.style.backgroundColor = '#ff4444';
             pttButton.style.color = 'white';
@@ -397,7 +466,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.addEventListener('mouseup', function (event) {
         const pttButton = event.target.closest('#ptt-btn');
-        if (pttButton && !pttButton.disabled) {
+        if (pttButton && !pttButton.disabled && isRecording) {
             stopRecording();
             pttButton.style.backgroundColor = '';
             pttButton.style.color = '';

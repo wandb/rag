@@ -19,27 +19,54 @@ export class WavStreamPlayer {
     this.analyser = null;
     this.trackSampleOffsets = {};
     this.interruptedTrackIds = {};
+    this.mediaRecorder = null;
+    this.audioElement = null;
   }
 
   /**
-   * Connects the audio context and enables output to speakers
+   * Connects the audio context and sets up MediaRecorder
+   * @param {HTMLAudioElement} audioElement
    * @returns {Promise<true>}
    */
-  async connect() {
+  async connect(audioElement) {
+    this.audioElement = audioElement;
     this.context = new AudioContext({ sampleRate: this.sampleRate });
     if (this.context.state === 'suspended') {
       await this.context.resume();
     }
+
+    // Create a MediaStream from the audio context
+    const dest = this.context.createMediaStreamDestination();
+
     try {
       await this.context.audioWorklet.addModule(this.scriptSrc);
     } catch (e) {
       console.error(e);
       throw new Error(`Could not add audioWorklet module: ${this.scriptSrc}`);
     }
+
     const analyser = this.context.createAnalyser();
     analyser.fftSize = 8192;
     analyser.smoothingTimeConstant = 0.1;
     this.analyser = analyser;
+
+    // Set up MediaRecorder to capture the audio stream
+    this.mediaRecorder = new MediaRecorder(dest.stream);
+    this.mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        const url = URL.createObjectURL(event.data);
+        this.audioElement.src = url;
+        // Clean up the old URL
+        const oldUrl = this.audioElement.dataset.blobUrl;
+        if (oldUrl) {
+          URL.revokeObjectURL(oldUrl);
+        }
+        this.audioElement.dataset.blobUrl = url;
+      }
+    };
+
+    // Start recording
+    this.mediaRecorder.start(100); // Update every 100ms
     return true;
   }
 
@@ -76,6 +103,12 @@ export class WavStreamPlayer {
   _start() {
     const streamNode = new AudioWorkletNode(this.context, 'stream_processor');
     streamNode.connect(this.context.destination);
+    streamNode.connect(this.analyser);
+
+    // Also connect to the MediaStreamDestination
+    const dest = this.context.createMediaStreamDestination();
+    streamNode.connect(dest);
+
     streamNode.port.onmessage = (e) => {
       const { event } = e.data;
       if (event === 'stop') {
@@ -87,8 +120,6 @@ export class WavStreamPlayer {
         this.trackSampleOffsets[requestId] = { trackId, offset, currentTime };
       }
     };
-    this.analyser.disconnect();
-    streamNode.connect(this.analyser);
     this.stream = streamNode;
     return true;
   }
@@ -154,6 +185,62 @@ export class WavStreamPlayer {
    */
   async interrupt() {
     return this.getTrackSampleOffset(true);
+  }
+
+  /**
+   * Resets the player and starts a new MediaRecorder instance
+   * @returns {Promise<void>}
+   */
+  async reset() {
+    // Stop and clean up existing stream
+    if (this.stream) {
+      this.stream.port.postMessage({ event: 'reset' });
+      this.stream.disconnect();
+      this.stream = null;
+    }
+
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+
+    // Reset all tracking variables
+    this.trackSampleOffsets = {};
+    this.interruptedTrackIds = {};
+
+    // Clean up old blob URL
+    if (this.audioElement) {
+      const oldUrl = this.audioElement.dataset.blobUrl;
+      if (oldUrl) {
+        URL.revokeObjectURL(oldUrl);
+        delete this.audioElement.dataset.blobUrl;
+      }
+      this.audioElement.src = '';
+    }
+
+    // Create new MediaRecorder
+    const dest = this.context.createMediaStreamDestination();
+    this.mediaRecorder = new MediaRecorder(dest.stream);
+    this.mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        const url = URL.createObjectURL(event.data);
+        this.audioElement.src = url;
+        // Clean up the old URL
+        const oldUrl = this.audioElement.dataset.blobUrl;
+        if (oldUrl) {
+          URL.revokeObjectURL(oldUrl);
+        }
+        this.audioElement.dataset.blobUrl = url;
+      }
+    };
+
+    // Start recording
+    this.mediaRecorder.start(100);
+
+    // Ensure the audio element is reset
+    if (this.audioElement) {
+      this.audioElement.currentTime = 0;
+      this.audioElement.pause();
+    }
   }
 }
 

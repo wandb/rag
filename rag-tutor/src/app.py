@@ -263,6 +263,25 @@ async def myws(data, send):
 
     try:
         msg_type = data.get("type")
+
+        # Handle cancel event
+        if msg_type == "cancel":
+            print("Audio streaming cancelled")
+            # Clear any pending tasks
+            if hasattr(myws, "current_task"):
+                myws.current_task.cancel()
+            await send(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Cancelled", cls="event-type"),
+                    Span("Audio streaming cancelled", cls="event-data"),
+                    cls="event-item",
+                    id="event-log",
+                    hx_swap_oob="beforeend",
+                )
+            )
+            return
+
         if msg_type == "audio":
             audio_data = data.get("data")
             if audio_data:
@@ -279,40 +298,42 @@ async def myws(data, send):
                         hx_swap_oob="beforeend",
                     )
                 )
-                # For testing: Instead of using received audio, load speech.mp3
-                chunks = get_audio_chunks("speech.mp3")
 
-                print(f"Sending {len(chunks)} audio chunks")
-                for i, chunk in enumerate(chunks):
-                    # Send event log update
-                    await send(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Audio chunk sent", cls="event-type"),
-                            Span(f"Chunk {i+1}/{len(chunks)}", cls="event-data"),
-                            cls="event-item",
-                            id="event-log",
-                            hx_swap_oob="beforeend",
+                # Create async task for sending chunks
+                async def send_chunks():
+                    chunks = get_audio_chunks("speech.mp3")
+                    print(f"Sending {len(chunks)} audio chunks")
+                    for i, chunk in enumerate(chunks):
+                        await send(
+                            Div(
+                                Span(
+                                    datetime.now().strftime("%H:%M:%S"),
+                                    cls="event-timestamp",
+                                ),
+                                Span("Audio chunk sent", cls="event-type"),
+                                Span(f"Chunk {i+1}/{len(chunks)}", cls="event-data"),
+                                cls="event-item",
+                                id="event-log",
+                                hx_swap_oob="beforeend",
+                            )
                         )
-                    )
 
-                    # Send the actual audio data with type information
-                    await send(
-                        json.dumps(
-                            {
-                                "type": "audio",
-                                "data": chunk,
-                                "chunk": i + 1,
-                                "total": len(chunks),
-                            }
+                        await send(
+                            json.dumps(
+                                {
+                                    "type": "audio",
+                                    "data": chunk,
+                                    "chunk": i + 1,
+                                    "total": len(chunks),
+                                }
+                            )
                         )
-                    )
+                        # await asyncio.sleep(1)
 
-                    # Add a small delay between chunks to simulate streaming
-                    await asyncio.sleep(1)
+                # Store and start the task
+                myws.current_task = asyncio.create_task(send_chunks())
+                await myws.current_task
+
         else:
             # Handle other event types
             await send(
@@ -328,6 +349,8 @@ async def myws(data, send):
                 )
             )
 
+    except asyncio.CancelledError:
+        print("Task was cancelled")
     except Exception as e:
         print(f"Error processing message: {str(e)}")
         import traceback
