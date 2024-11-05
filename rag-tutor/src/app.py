@@ -1,7 +1,9 @@
+import asyncio
 import json
 from datetime import datetime
 
 from fasthtml.common import *
+from pydub import AudioSegment
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
@@ -50,6 +52,31 @@ start_time = None
 conversation_items = []
 
 
+def get_audio_chunks(file_path, chunk_duration_ms=10000):
+    """
+    Converts MP3 to WAV format and splits it into 10-second chunks
+    Returns: List of base64-encoded PCM16 chunks
+    """
+    # Load and convert MP3 to WAV format
+    audio = AudioSegment.from_mp3(file_path)
+
+    # Convert to mono and set sample rate to 44100Hz
+    audio = audio.set_channels(1).set_frame_rate(44100)
+
+    # Split into chunks
+    chunks = []
+    for i in range(0, len(audio), chunk_duration_ms):
+        chunk = audio[i : i + chunk_duration_ms]
+        # Convert to raw PCM16 data
+        buffer = io.BytesIO()
+        chunk.export(buffer, format="s16le")
+        # Convert to base64
+        base64_data = base64.b64encode(buffer.getvalue()).decode()
+        chunks.append(base64_data)
+
+    return chunks
+
+
 @rt("/")
 def get():
     return Container(
@@ -83,6 +110,11 @@ def get():
                         Div(
                             H3("conversation", style="margin:0 0 16px 0"),
                             Div(
+                                Audio(
+                                    id="audio-player",
+                                    controls=True,
+                                    disabled="disabled",
+                                ),
                                 P("awaiting connection..."),
                                 id="conversation-content",
                             ),
@@ -101,10 +133,8 @@ def get():
                     ),
                     cls="main-content",
                 ),
-                # Add a hidden div to hold the audio stream
-                Div(id="audio-stream-container", style="display:none;"),
                 cls="console-layout",
-                id="ws-container",  # Keep the ID but remove WebSocket attributes
+                id="ws-container",  # Keep only the ID
             ),
         )
     )
@@ -135,8 +165,13 @@ def post():
                     Div(
                         H3("conversation", style="margin:0 0 16px 0"),
                         Div(
+                            Audio(
+                                id="audio-player",
+                                controls=True,
+                                preload="auto",
+                                disabled=False,
+                            ),
                             id="conversation-content",
-                            cls="conversation",
                         ),
                         cls="conversation",
                     ),
@@ -146,8 +181,6 @@ def post():
                             "Push to Talk",
                             id="ptt-btn",
                             disabled=None,
-                            # ws_send="audioMessage",
-                            # hx_trigger="audioMessage",
                         ),
                         cls="controls",
                     ),
@@ -155,12 +188,15 @@ def post():
                 ),
                 cls="main-content",
             ),
+            # Add a hidden div to hold the audio stream
+            Div(id="audio-stream-container", style="display:none;"),
             cls="console-layout",
             id="ws-container",
             hx_ext="ws",
             ws_connect="/wscon",
             ws_send=True,
             hx_trigger="audioMessage",
+            _="on htmx:wsAfterMessage if event.detail.message.type === 'audio' call processAudioChunk(event.detail.message.data)",
             hx_swap_oob="true",
         ),
         # Update the event log
@@ -221,101 +257,74 @@ async def on_disconnect():
 
 @app.ws("/wscon", conn=on_connect, disconn=on_disconnect)
 async def myws(data, send):
-
-    # Skip empty messages (like initial connection)
     if not data:
         print("Skipping empty message")
         return
 
     try:
-        try:
-            # Handle different message types
-            msg_type = data.get("type")
-            if msg_type == "event":
+        msg_type = data.get("type")
+        if msg_type == "audio":
+            audio_data = data.get("data")
+            if audio_data:
+                print("Received audio data")
                 await send(
                     Div(
                         Span(
                             datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
                         ),
-                        Span("Event received", cls="event-type"),
-                        Span(data.get("data", ""), cls="event-data"),
+                        Span("Audio received", cls="event-type"),
+                        Span(f"Length: {len(audio_data)} bytes", cls="event-data"),
                         cls="event-item",
                         id="event-log",
                         hx_swap_oob="beforeend",
                     )
                 )
-            elif msg_type == "audio":
-                audio_data = data.get("data")
-                if audio_data:
-                    await send(
-                        Div(
-                            # Audio player container with visualization
-                            Div(
-                                # Audio controls
-                                Button(
-                                    "▶️ Play",
-                                    cls="play-btn",
-                                    onclick="playAudioChunk(this.parentElement)",
-                                ),
-                                # Visualization canvas
-                                Canvas(
-                                    cls="audio-visualizer",
-                                    style="width:100%; height:50px; background:#f0f0f0; margin:4px 0;",
-                                ),
-                                # Hidden audio data
-                                data_audio=audio_data,
-                                cls="audio-player-container",
-                            ),
-                            # Keep the timestamp
-                            P(
-                                datetime.now().strftime("%H:%M:%S"),
-                                style="margin:4px 0; color:#666;",
-                            ),
-                            id="conversation-content",
-                            hx_swap_oob="beforeend",
-                        )
-                    )
+                # For testing: Instead of using received audio, load speech.mp3
+                chunks = get_audio_chunks("speech.mp3")
 
-                    # Also log the event
+                print(f"Sending {len(chunks)} audio chunks")
+                for i, chunk in enumerate(chunks):
+                    # Send event log update
                     await send(
                         Div(
                             Span(
                                 datetime.now().strftime("%H:%M:%S"),
                                 cls="event-timestamp",
                             ),
-                            Span("Audio received", cls="event-type"),
-                            Span(f"Length: {len(audio_data)} bytes", cls="event-data"),
+                            Span("Audio chunk sent", cls="event-type"),
+                            Span(f"Chunk {i+1}/{len(chunks)}", cls="event-data"),
                             cls="event-item",
                             id="event-log",
                             hx_swap_oob="beforeend",
                         )
                     )
-            else:
-                # Handle raw text as a generic message
-                await send(
-                    Div(
-                        Span(
-                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
-                        ),
-                        Span("Message received", cls="event-type"),
-                        Span(str(data), cls="event-data"),
-                        cls="event-item",
-                        id="event-log",
-                        hx_swap_oob="beforeend",
-                    )
-                )
 
-        except json.JSONDecodeError:
-            # Handle raw text messages
-            print("Received raw text message")
+                    # Send the actual audio data with type information
+                    await send(
+                        json.dumps(
+                            {
+                                "type": "audio",
+                                "data": chunk,
+                                "chunk": i + 1,
+                                "total": len(chunks),
+                            }
+                        )
+                    )
+
+                    # Add a small delay between chunks to simulate streaming
+                    await asyncio.sleep(1)
+        else:
+            # Handle other event types
             await send(
                 Div(
                     Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Text received", cls="event-type"),
-                    Span(msg, cls="event-data"),
-                    cls="event-item",
-                    id="event-log",
-                    hx_swap_oob="beforeend",
+                    Span("Event received", cls="event-type"),
+                    Span(
+                        str(data.get("data", "")),
+                        cls="event-item",
+                        id="event-log",
+                        hx_swap_oob="beforeend",
+                    ),
                 )
             )
 
