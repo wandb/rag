@@ -5,6 +5,9 @@ from datetime import datetime
 from fasthtml.common import *
 from pydub import AudioSegment
 
+from src.components.models import ServerEvent
+from src.components.oai_relay import OpenAIRealtimeClient
+
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
 tlink = Script(src="https://cdn.tailwindcss.com")
@@ -50,6 +53,8 @@ start_time = None
 
 # Store conversation state
 conversation_items = []
+
+openai_client = None
 
 
 def get_audio_chunks(file_path, chunk_duration_ms=10000):
@@ -283,6 +288,31 @@ def post():
 async def on_connect(send):
     try:
         print("New WebSocket connection established")
+        global openai_client
+
+        async def relay_openai_message(parsed_event: ServerEvent):
+            # Format the event data for display
+            event_type = parsed_event.type
+            event_details = parsed_event.model_dump(include={"event_id"})
+
+            await send(
+                Div(
+                    Div(
+                        Span(
+                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
+                        ),
+                        Span(event_type, cls="event-type"),
+                        Span(json.dumps(event_details, indent=2), cls="event-data"),
+                        cls="event-item",
+                    ),
+                    cls="event-log",
+                    id="event-log",
+                    hx_swap_oob="beforeend",
+                )
+            )
+
+        openai_client = OpenAIRealtimeClient(message_callback=relay_openai_message)
+        await openai_client.start()
         message = Div(
             Div(
                 Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
@@ -300,6 +330,10 @@ async def on_connect(send):
 
 
 async def on_disconnect():
+    global openai_client
+    if openai_client:
+        await openai_client.stop()
+        openai_client = None
     print("WebSocket disconnected")
 
 

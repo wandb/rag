@@ -1,8 +1,8 @@
 import asyncio
-import json
-import io
-import wave
 import base64
+import io
+import json
+import wave
 
 import litellm
 from litellm import acompletion
@@ -195,6 +195,7 @@ async def call_model(query: str):
 
 async def main():
     import base64
+
     from pydub import AudioSegment
 
     query = "What is contextual retrieval?"

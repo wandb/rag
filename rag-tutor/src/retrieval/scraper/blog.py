@@ -5,10 +5,7 @@ import time
 
 import httpx
 from crawl4ai import AsyncWebCrawler
-from crawl4ai.async_crawler_strategy import (
-    AsyncCrawlResponse,
-    AsyncPlaywrightCrawlerStrategy,
-)
+from crawl4ai.async_crawler_strategy import AsyncCrawlResponse, AsyncPlaywrightCrawlerStrategy
 from models import Document
 from playwright.async_api import Browser, Error, Page
 from utils import cleanup_text, html_to_md, length_fn, load_html_content

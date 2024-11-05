@@ -1,9 +1,10 @@
 import warnings
 from typing import Callable, Sequence
 
+from tree_sitter_languages import get_parser
+
 from src.retrieval.models import Document, DocumentChunk
 from src.retrieval.utils import length_fn
-from tree_sitter_languages import get_parser
 
 warnings.filterwarnings("ignore")
 
