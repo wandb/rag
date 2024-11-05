@@ -1,6 +1,32 @@
 // Audio recording functionality
 let recorder;
 
+// Add WavStreamPlayer initialization and handling
+let streamPlayer = null;
+
+async function initializeStreamPlayer() {
+    if (!streamPlayer) {
+        streamPlayer = new WavStreamPlayer({ sampleRate: 44100 });
+        await streamPlayer.connect();
+    }
+}
+
+window.playAudioChunk = async function (element) {
+    await initializeStreamPlayer();
+
+    const base64Data = element.getAttribute('data-audio');
+    const binaryString = window.atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Convert to Int16Array for PCM data
+    const pcmData = new Int16Array(bytes.buffer);
+    streamPlayer.add16BitPCM(pcmData);
+};
+
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function () {
     // Listen for HTMX before swap events to handle recorder lifecycle
@@ -30,7 +56,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     console.log('Recorder initialized:', recorder);
                     await recorder.begin();
-                    console.log('Recorder began successfully');
+                    console.log('Recorder ready for use');
                 }
             } catch (error) {
                 console.error('Recorder initialization error:', error);
@@ -174,30 +200,31 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Simplify startRecording function since initialization is handled on connect
     async function startRecording() {
-        if (!recorder) {
-            console.error('Recorder not initialized');
-            return;
-        }
-
         try {
-            console.log('Starting recording');
+            if (!recorder) {
+                console.error('Recorder not initialized');
+                return;
+            }
+
+            // Start recording using the record() method
             await recorder.record();
-            recorder.isRecording = true;
-            console.log('Recording started successfully');
+            console.log('Recording started');
         } catch (error) {
             console.error('Start recording error:', error);
         }
     }
 
     async function stopRecording() {
-        if (!recorder || !recorder.isRecording) return;
+        if (!recorder) {
+            console.log('Recorder not initialized');
+            return;
+        }
 
         try {
-            // Use end() instead of pause() + save()
+            // End the recording and get the result
             const result = await recorder.end();
-            recorder.isRecording = false;
 
-            // Handle file reading and data preparation here instead of in wsConfigSend
+            // Handle file reading and data preparation
             const base64Data = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result.split(',')[1]);
@@ -205,38 +232,30 @@ document.addEventListener('DOMContentLoaded', function () {
                 reader.readAsDataURL(result.blob);
             });
 
-            // Prepare the message data
-            const messageData = {
-                type: 'audio',
-                data: base64Data,
-                sampleRate: result.sampleRate,
-                duration: result.duration,
-                channelCount: result.channelCount
-            };
-
-            // Get the PTT button
-            const pttButton = document.getElementById('ptt-btn');
-            if (pttButton) {
-                const audioEvent = new CustomEvent('audioMessage', {
-                    bubbles: true,
-                    detail: messageData
+            // Send the audio data with metadata from the result
+            const wsContainer = document.getElementById('ws-container');
+            if (wsContainer) {
+                htmx.trigger(wsContainer, 'audioMessage', {
+                    type: 'audio',
+                    data: base64Data,
+                    metadata: {
+                        sampleRate: result.sampleRate,
+                        numberOfChannels: result.channelCount,
+                        duration: result.duration,
+                        format: 'audio/wav'
+                    }
                 });
-
-                console.log('Dispatching audio event:', audioEvent);
-                pttButton.dispatchEvent(audioEvent);
             }
 
-            // No need to call quit() here since end() already cleaned up everything
+            // No need to clear since end() already cleaned up everything
             recorder = null;
 
         } catch (error) {
             console.error('Stop recording error:', error);
+            // Cleanup on error
             if (recorder) {
                 try {
-                    // Only call quit() if the processor exists
-                    if (recorder.processor) {
-                        await recorder.quit();
-                    }
+                    await recorder.quit();
                     recorder = null;
                 } catch (cleanupError) {
                     console.error('Error during cleanup:', cleanupError);

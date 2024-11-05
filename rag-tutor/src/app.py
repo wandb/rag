@@ -101,6 +101,8 @@ def get():
                     ),
                     cls="main-content",
                 ),
+                # Add a hidden div to hold the audio stream
+                Div(id="audio-stream-container", style="display:none;"),
                 cls="console-layout",
                 id="ws-container",  # Keep the ID but remove WebSocket attributes
             ),
@@ -242,21 +244,19 @@ async def myws(data, send):
                     )
                 )
             elif msg_type == "audio":
-                # Handle audio messages
                 audio_data = data.get("data")
                 print(
                     f"Received audio data of length: {len(audio_data) if audio_data else 0}"
                 )
 
-                # Create an audio player for the received audio data
                 if audio_data:
                     await send(
                         Div(
-                            # Audio player
-                            Audio(
-                                src=f"data:audio/wav;base64,{audio_data}",
-                                controls=True,
-                                preload="auto",
+                            # Instead of Audio element, we'll use a div with custom attributes
+                            Div(
+                                data_audio=audio_data,  # Base64 audio data
+                                cls="stream-audio-chunk",
+                                _="on load call window.playAudioChunk(me)",
                             ),
                             # Add timestamp and details
                             P(
