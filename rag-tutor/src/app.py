@@ -5,7 +5,8 @@ from datetime import datetime
 from fasthtml.common import *
 from pydub import AudioSegment
 
-from src.components.models import ServerEvent
+from src.components.models import (
+    ClientEventTypes, InputAudioBufferAppend, InputAudioBufferCommit, ServerEvent, ServerEventTypes)
 from src.components.oai_relay import OpenAIRealtimeClient
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
@@ -295,6 +296,25 @@ async def on_connect(send):
             event_type = parsed_event.type
             event_details = parsed_event.model_dump(include={"event_id"})
 
+            # Handle transcription completed event
+            if (
+                event_type
+                == ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
+            ):
+                # Add user message to conversation
+                await send(
+                    Div(
+                        Div(
+                            Div("User", cls="chat-label"),
+                            Div(parsed_event.transcript, cls="chat-message"),
+                            cls="chat-bubble chat-bubble-user",
+                        ),
+                        id="conversation-content",
+                        hx_swap_oob="beforeend",
+                    )
+                )
+
+            # Send event to event log
             await send(
                 Div(
                     Div(
@@ -371,8 +391,45 @@ async def myws(data, send):
 
         if msg_type == "audio":
             audio_data = data.get("data")
+            metadata = data.get("metadata", {})
             if audio_data:
                 print("Received audio data")
+
+                # Decode base64 WAV data
+                wav_data = base64.b64decode(audio_data)
+
+                # Load into pydub and convert to mono
+                audio = AudioSegment.from_wav(io.BytesIO(wav_data))
+                audio = audio.set_channels(1).set_frame_rate(metadata["sampleRate"])
+
+                # Convert to raw PCM16 data
+                buffer = io.BytesIO()
+                audio.export(buffer, format="s16le")  # Export as raw PCM16
+
+                # Create the audio buffer append event
+                audio_event = InputAudioBufferAppend(
+                    type=ClientEventTypes.INPUT_AUDIO_BUFFER_APPEND,
+                    audio=base64.b64encode(buffer.getvalue()).decode(
+                        "utf-8"
+                    ),  # Base64 encoded PCM data
+                )
+
+                # Send audio buffer
+                await openai_client.send(audio_event.model_dump_json(exclude_none=True))
+
+                # Send commit event
+                commit_event = InputAudioBufferCommit(
+                    type=ClientEventTypes.INPUT_AUDIO_BUFFER_COMMIT
+                )
+                await openai_client.send(
+                    commit_event.model_dump_json(exclude_none=True)
+                )
+
+                print(
+                    f"Sent audio buffer: {metadata['sampleRate']}Hz, mono channel, {metadata['duration']}s"
+                )
+
+                # Send UI update
                 await send(
                     Div(
                         Div(
@@ -389,28 +446,6 @@ async def myws(data, send):
                         hx_swap_oob="beforeend",
                     )
                 )
-
-                # Create async task for sending chunks
-                async def send_chunks():
-                    chunks = get_audio_chunks("speech.mp3")
-                    print(f"Sending {len(chunks)} audio chunks")
-                    for i, chunk in enumerate(chunks):
-
-                        await send(
-                            json.dumps(
-                                {
-                                    "type": "audio",
-                                    "data": chunk,
-                                    "chunk": i + 1,
-                                    "total": len(chunks),
-                                }
-                            )
-                        )
-                        # await asyncio.sleep(1)
-
-                # Store and start the task
-                myws.current_task = asyncio.create_task(send_chunks())
-                await myws.current_task
 
         else:
             # Handle other event types
