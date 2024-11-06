@@ -4,7 +4,15 @@ import os
 
 import websockets
 
-from src.components.models import InputAudioTranscription, Session, SessionUpdate, parse_server_event
+from src.components.models import (
+    ClientEventTypes,
+    InputAudioTranscription,
+    ResponseCreate,
+    ServerEventTypes,
+    Session,
+    SessionUpdate,
+    parse_server_event,
+)
 
 
 class OpenAIRealtimeClient:
@@ -70,15 +78,88 @@ class OpenAIRealtimeClient:
         """Receive and process WebSocket messages"""
         try:
             async for message in self.ws:
-                print("Received message from OpenAI:", message)
                 try:
-                    # Parse the message string as JSON
                     message_data = json.loads(message)
-                    # Parse the event using our models
                     parsed_event = parse_server_event(message_data)
 
-                    if self.message_callback:
-                        await self.message_callback(parsed_event)
+                    # Handle different event types
+                    if parsed_event.type == ServerEventTypes.SESSION_CREATED:
+                        # Session has been created
+                        print("Session created:", parsed_event.event_id)
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif parsed_event.type == ServerEventTypes.SESSION_UPDATED:
+                        # Session has been updated
+                        print("Session updated:", parsed_event.event_id)
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif parsed_event.type == ServerEventTypes.CONVERSATION_CREATED:
+                        # New conversation started
+                        print("Conversation created:", parsed_event.conversation.id)
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif (
+                        parsed_event.type == ServerEventTypes.CONVERSATION_ITEM_CREATED
+                    ):
+                        print("Conversation item created:", parsed_event.event_id)
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif (
+                        parsed_event.type
+                        == ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE
+                    ):
+                        # Assistant's response transcript is complete
+                        print(
+                            f"Assistant's response transcript is complete: {parsed_event.event_id}"
+                        )
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif (
+                        parsed_event.type
+                        == ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
+                    ):
+                        # User's audio has been transcribed
+                        print(
+                            "User audio transcription completed:", parsed_event.event_id
+                        )
+                        # Create and send response create event
+                        response_event = ResponseCreate(
+                            type=ClientEventTypes.RESPONSE_CREATE
+                        )
+                        await self.send(
+                            response_event.model_dump_json(exclude_none=True)
+                        )
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif parsed_event.type == ServerEventTypes.RESPONSE_AUDIO_DELTA:
+                        print(
+                            f"Received chunk of assistant's audio response: {parsed_event.event_id}"
+                        )
+                        # Received chunk of assistant's audio response
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif parsed_event.type == ServerEventTypes.RESPONSE_DONE:
+                        print(
+                            f"Assistant's complete response is done: {parsed_event.event_id}"
+                        )
+                        # Assistant's complete response is done
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
+                    elif parsed_event.type == ServerEventTypes.ERROR:
+                        print(
+                            f"Error from server: {parsed_event.error.model_dump_json(exclude_none=True)}"
+                        )
+                        if self.message_callback:
+                            await self.message_callback(parsed_event)
+
                 except ValueError as e:
                     print(f"Error parsing event: {e}")
                 except Exception as e:

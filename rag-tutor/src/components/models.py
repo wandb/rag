@@ -298,12 +298,17 @@ class ConversationItemDeleted(BaseEvent):
 
 
 #### Response
+class TokenDetails(BaseModel):
+    text_tokens: int = 0
+    audio_tokens: int = 0
+
+
 class ResponseUsage(BaseModel):
     total_tokens: int
     input_tokens: int
     output_tokens: int
-    input_token_details: Optional[Dict[str, int]] = None
-    output_token_details: Optional[Dict[str, int]] = None
+    input_token_details: Optional[Dict[str, Union[int, TokenDetails]]] = None
+    output_token_details: Optional[Dict[str, Union[int, TokenDetails]]] = None
 
 
 class ResponseOutput(BaseModel):
