@@ -8,6 +8,17 @@ let isProcessing = false;
 // Add visualization intervals tracking
 const visualizationIntervals = new Map();
 
+// Add this helper function at the top level
+function scrollToBottom(elementId) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        // Use requestAnimationFrame to ensure DOM updates are complete
+        requestAnimationFrame(() => {
+            element.scrollTop = element.scrollHeight;
+        });
+    }
+}
+
 // Recording functions
 async function startRecording() {
     try {
@@ -159,8 +170,135 @@ let isFirstChunk = true;
 // Update the sample rate constant
 const OPENAI_SAMPLE_RATE = 24000;  // OpenAI uses 24kHz
 
+// Add at the top with other globals
+let clientCanvas, serverCanvas;
+let clientCtx, serverCtx;
 
+function drawSineWave(canvas, ctx, values, color) {
+    const width = canvas.width;
+    const height = canvas.height;
 
+    // Clear canvas with a light background
+    ctx.fillStyle = '#f8f8f8';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw the center line
+    ctx.beginPath();
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+
+    // Draw the wave
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+
+    // Normalize and animate the values
+    const now = Date.now() / 1000; // Get current time in seconds
+    const points = new Float32Array(values.length);
+
+    for (let i = 0; i < values.length; i++) {
+        // Add some oscillation to make it more dynamic
+        const oscillation = Math.sin(now * 4 + i * 0.1) * 0.15;
+        points[i] = values[i] + oscillation;
+    }
+
+    // Start from the left edge
+    ctx.moveTo(0, height / 2);
+
+    // Draw the wave with smooth curves
+    for (let i = 0; i < width; i += 2) {
+        const valueIndex = Math.floor((i / width) * points.length);
+        const value = points[valueIndex] || 0;
+        const nextValue = points[Math.min(valueIndex + 1, points.length - 1)] || 0;
+
+        // Calculate current and next points with animation
+        const normalizedValue = (value - 0.5) * 0.8; // Reduced amplitude
+        const normalizedNextValue = (nextValue - 0.5) * 0.8;
+
+        const x = i;
+        const nextX = Math.min(i + 2, width);
+        const y = (height / 2) + (normalizedValue * height / 2);
+        const nextY = (height / 2) + (normalizedNextValue * height / 2);
+
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            // Use quadratic curve with control point halfway between points
+            const controlX = (x + nextX) / 2;
+            const controlY = (y + nextY) / 2;
+            ctx.quadraticCurveTo(x, y, controlX, controlY);
+        }
+    }
+
+    ctx.stroke();
+
+}
+
+function setupVisualization() {
+    clientCanvas = document.getElementById('client-canvas');
+    serverCanvas = document.getElementById('server-canvas');
+
+    if (clientCanvas && serverCanvas) {
+        clientCtx = clientCanvas.getContext('2d');
+        serverCtx = serverCanvas.getContext('2d');
+
+        // Set initial canvas dimensions
+        function resizeCanvas(canvas) {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+
+        resizeCanvas(clientCanvas);
+        resizeCanvas(serverCanvas);
+
+        // Add window resize handler
+        window.addEventListener('resize', () => {
+            resizeCanvas(clientCanvas);
+            resizeCanvas(serverCanvas);
+        });
+
+        function render() {
+            if (!clientCanvas || !serverCanvas) return;
+
+            // Client-side visualization (recording)
+            if (recorder && recorder.processor) {
+                try {
+                    const result = recorder.getFrequencies('voice');
+                    drawSineWave(clientCanvas, clientCtx, isRecording ? result.values : new Float32Array(128).fill(0.5), '#0099ff');
+                } catch (error) {
+                    drawSineWave(clientCanvas, clientCtx, new Float32Array(128).fill(0.5), '#0099ff');
+                }
+            } else {
+                drawSineWave(clientCanvas, clientCtx, new Float32Array(128).fill(0.5), '#0099ff');
+            }
+
+            // Server-side visualization (playback)
+            if (streamPlayer && streamPlayer.analyser && isPlaying) {
+                try {
+                    const result = streamPlayer.getFrequencies('voice');
+                    // Add some randomness to make it more dynamic when there's no actual audio
+                    const values = result.values.map(v =>
+                        v === 0.5 ? 0.5 + (Math.random() * 0.01 - 0.005) : v
+                    );
+                    drawSineWave(serverCanvas, serverCtx, values, '#009900');
+                } catch (error) {
+                    console.error('Visualization error:', error);
+                    drawSineWave(serverCanvas, serverCtx, new Float32Array(128).fill(0.5), '#009900');
+                }
+            } else {
+                drawSineWave(serverCanvas, serverCtx, new Float32Array(128).fill(0.5), '#009900');
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        render();
+    }
+}
 async function initializeAudioPlayer(autoplay = true) {
     try {
         audioElement = document.getElementById('audio-player');
@@ -203,6 +341,9 @@ async function initializeAudioPlayer(autoplay = true) {
             }
         }
 
+        // Add visualization setup
+        setupVisualization();
+
         return true;
     } catch (error) {
         console.error('Error initializing audio player:', error);
@@ -225,10 +366,16 @@ async function processAudioChunk(base64Data) {
             audioChunks = []; // Clear existing chunks
             if (streamPlayer) {
                 await streamPlayer.reset();
+
+                // Add this: Ensure audio is connected to analyzer
+                if (audioElement && streamPlayer.context) {
+                    const source = streamPlayer.context.createMediaElementSource(audioElement);
+                    source.connect(streamPlayer.analyser);
+                    source.connect(streamPlayer.context.destination);
+                }
             }
             isPlaying = true;
             isFirstChunk = false;
-            // Immediately process first chunk without delay
             updateAudioSource(true);
         }
 
@@ -249,7 +396,7 @@ async function processAudioChunk(base64Data) {
         }
 
         // Process immediately for the last chunk (when it's small)
-        if (uint8Array.length < 1024) {  // Assuming small chunks are final chunks
+        if (uint8Array.length < 4096) {  // Assuming small chunks are final chunks
             updateAudioSource(false);
         } else {
             // For larger chunks, debounce the updates
@@ -365,6 +512,16 @@ htmx.on('htmx:wsClose', async (evt) => {
     } catch (error) {
         console.error('Error cleaning up WebSocket resources:', error);
     }
+
+    // Clear visualization
+    if (clientCtx && clientCanvas) {
+        clientCtx.clearRect(0, 0, clientCanvas.width, clientCanvas.height);
+    }
+    if (serverCtx && serverCanvas) {
+        serverCtx.clearRect(0, 0, serverCanvas.width, serverCanvas.height);
+    }
+
+    isPlaying = false;  // Reset playing state
 });
 
 htmx.on('htmx:wsError', (evt) => {
@@ -404,11 +561,53 @@ htmx.on('htmx:wsBeforeMessage', async function (evt) {
             await processAudioChunk(parsedMessage.data);
             return;
         }
+
+        // If it's an HTML update with hx-swap-oob="beforeend"
+        if (typeof message === 'string' && message.includes('hx-swap-oob="beforeend"')) {
+            // Schedule scroll after the DOM update
+            setTimeout(() => {
+                scrollToBottom('event-log');
+                scrollToBottom('conversation-content');
+            }, 0);
+        }
     } catch (error) {
         // If parsing fails, it's not JSON data, let HTMX handle it silently
     }
 
     // Let HTMX handle non-audio messages for DOM updates
+});
+
+// Update the htmx:wsAfterMessage handler
+htmx.on('htmx:wsAfterMessage', async function (evt) {
+    const message = evt.detail.message;
+
+    try {
+        // Try to parse the message if it's a string
+        const parsedMessage = typeof message === 'string' ? JSON.parse(message) : message;
+
+        // Handle audio messages
+        if (parsedMessage.type === 'audio') {
+            await processAudioChunk(parsedMessage.data);
+            return;
+        }
+
+        // If it's an HTML update
+        if (typeof message === 'string' && message.includes('hx-swap-oob')) {
+            // Use requestAnimationFrame to ensure DOM is updated
+            requestAnimationFrame(() => {
+                scrollToBottom('event-log');
+                scrollToBottom('conversation-content');
+            });
+        }
+    } catch (error) {
+        // If parsing fails, it's not JSON data
+        if (typeof message === 'string' && message.includes('hx-swap-oob')) {
+            requestAnimationFrame(() => {
+                scrollToBottom('event-log');
+                scrollToBottom('conversation-content');
+            });
+        }
+    }
 });
 
 // Other HTMX Events
@@ -475,8 +674,10 @@ htmx.on('htmx:afterSwap', function (evt) {
     if (pttButton) {
         // console.log('Button swapped, new disabled state:', pttButton.disabled);
     }
-    if (evt.detail.target.id === 'event-log') {
-        evt.detail.target.scrollTop = evt.detail.target.scrollHeight;
+
+    // Check if the swapped element is either the event log or conversation content
+    if (evt.detail.target.id === 'event-log' || evt.detail.target.id === 'conversation-content') {
+        scrollToBottom(evt.detail.target.id);
     }
 });
 
@@ -503,3 +704,4 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 });
+

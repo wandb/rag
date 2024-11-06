@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime
 import json
+from datetime import datetime
 
 from fasthtml.common import *
 from pydub import AudioSegment
@@ -57,194 +57,43 @@ app, rt = fast_app(
 # Store start time for event timestamps
 start_time = None
 
-# Store conversation state
-conversation_items = []
 
 openai_client = None
 
 
-def get_audio_chunks(file_path, chunk_duration_ms=10000):
-    """
-    Converts MP3 to WAV format and splits it into 10-second chunks
-    Returns: List of base64-encoded PCM16 chunks
-    """
-    # Load and convert MP3 to WAV format
-    audio = AudioSegment.from_mp3(file_path)
+def create_layout(
+    button_text="connect",
+    button_props={},
+    ws_props={},
+    show_initial_messages=True,
+    audio_player_disabled=False,
+    ptt_disabled=True,
+    include_audio_stream=False,
+):
+    """Creates the main layout with configurable options"""
 
-    # Convert to mono and set sample rate to 44100Hz
-    audio = audio.set_channels(1).set_frame_rate(44100)
+    # Common button properties
+    default_button_props = {
+        "id": "connect-btn",
+        "hx_post": "/connect" if button_text == "connect" else "/disconnect",
+        "hx_swap": "outerHTML",
+    }
+    button_props = {**default_button_props, **button_props}
 
-    # Split into chunks
-    chunks = []
-    for i in range(0, len(audio), chunk_duration_ms):
-        chunk = audio[i : i + chunk_duration_ms]
-        # Convert to raw PCM16 data
-        buffer = io.BytesIO()
-        chunk.export(buffer, format="s16le")
-        # Convert to base64
-        base64_data = base64.b64encode(buffer.getvalue()).decode()
-        chunks.append(base64_data)
-
-    return chunks
-
-
-@rt("/")
-def get():
-    return Container(
-        Div(
-            # Top Bar
-            Div(
-                Span("realtime console", style="margin-left:12px"),
-                Div(style="flex-grow:1"),  # Spacer
-                Button(
-                    "connect", id="connect-btn", hx_post="/connect", hx_swap="outerHTML"
-                ),
-                cls="top-bar",
-            ),
-            # Main Content
-            Div(
-                # Events Panel
-                Div(
-                    # Events Section
-                    Div(
-                        H3("events", style="margin:0 0 16px 0"),
-                        Div(
-                            P("awaiting connection..."),
-                            id="event-log",
-                            cls="event-log",
-                        ),
-                        cls="events-section",
-                    ),
-                    # Conversation Section
-                    Div(
-                        H3("conversation", style="margin:0 0 16px 0"),
-                        Div(
-                            id="conversation-content",
-                            cls="conversation-content",
-                        ),
-                        Div(
-                            Audio(
-                                id="audio-player",
-                                controls=True,
-                                preload="auto",
-                                disabled=False,
-                            ),
-                            cls="audio-player-container",
-                        ),
-                        cls="conversation",
-                    ),
-                    # Controls
-                    Div(
-                        Button(
-                            "Push to Talk",
-                            id="ptt-btn",
-                            disabled="disabled",
-                        ),
-                        cls="controls",
-                    ),
-                    cls="events-panel",
-                ),
-                cls="main-content",
-            ),
-            cls="console-layout",
-            id="ws-container",  # Keep only the ID
-        ),
-    )
-
-
-@rt("/connect")
-def post():
-    global start_time
-    start_time = datetime.now()
-
-    return (
-        Div(
-            # Top Bar
-            Div(
-                Span("realtime console", style="margin-left:12px"),
-                Div(style="flex-grow:1"),  # Spacer
-                Button(
-                    "disconnect",
-                    id="connect-btn",
-                    hx_post="/disconnect",
-                    hx_swap="outerHTML",
-                ),
-                cls="top-bar",
-            ),
-            # Main Content
-            Div(
-                # Events Panel
-                Div(
-                    # Events Section
-                    Div(
-                        H3("events", style="margin:0 0 16px 0"),
-                        Div(
-                            id="event-log",
-                            cls="event-log",
-                        ),
-                        cls="events-section",
-                    ),
-                    # Conversation Section
-                    Div(
-                        H3("conversation", style="margin:0 0 16px 0"),
-                        Div(
-                            id="conversation-content",
-                            cls="conversation-content",
-                        ),
-                        Div(
-                            Audio(
-                                id="audio-player",
-                                controls=True,
-                                preload="auto",
-                                disabled=False,
-                            ),
-                            cls="audio-player-container",
-                        ),
-                        cls="conversation",
-                    ),
-                    # Controls Section
-                    Div(
-                        Button(
-                            "Push to Talk",
-                            id="ptt-btn",
-                            disabled=None,
-                        ),
-                        cls="controls",
-                    ),
-                    cls="events-panel",
-                ),
-                cls="main-content",
-            ),
-            # Add a hidden div to hold the audio stream
-            Div(id="audio-stream-container", style="display:none;"),
-            cls="console-layout",
-            id="ws-container",
-            hx_ext="ws",
-            ws_connect="/wscon",
-            ws_send=True,
-            hx_trigger="audioMessage",
-            _="on htmx:wsAfterMessage if event.detail.message.type === 'audio' call processAudioChunk(event.detail.message.data)",
-            hx_swap_oob="outerHTML",
-        ),
-    )
-
-
-@rt("/disconnect")
-def post():
-    global start_time
-    start_time = None
+    # Common container properties
+    container_props = {
+        "cls": "console-layout",
+        "id": "ws-container",
+    }
+    container_props.update(ws_props)
 
     return Div(
         # Top Bar
         Div(
             Span("realtime console", style="margin-left:12px"),
-            Div(style="flex-grow:1"),  # Spacer
-            Button(
-                "connect", id="connect-btn", hx_post="/connect", hx_swap="outerHTML"
-            ),
+            Div(style="flex-grow:1"),
+            Button(button_text, **button_props),
             cls="top-bar",
-            id="top-bar",  # Add an ID for OOB swap
-            hx_swap_oob="true",  # Enable OOB swap
         ),
         # Main Content
         Div(
@@ -254,16 +103,43 @@ def post():
                 Div(
                     H3("events", style="margin:0 0 16px 0"),
                     Div(
-                        P("awaiting connection..."),
+                        P("awaiting connection...") if show_initial_messages else None,
                         id="event-log",
                         cls="event-log",
                     ),
                     cls="events-section",
                 ),
+                # Visualization Panel
+                Div(
+                    Div(
+                        Div(
+                            Div(
+                                H4(
+                                    "User",
+                                    style="margin:0 0 8px 0; text-align:center",
+                                ),
+                                Canvas(id="client-canvas"),
+                                cls="visualization-entry client",
+                            ),
+                            Div(
+                                H4(
+                                    "Assistant",
+                                    style="margin:0 0 8px 0; text-align:center",
+                                ),
+                                Canvas(id="server-canvas"),
+                                cls="visualization-entry server",
+                            ),
+                            cls="visualization",
+                        ),
+                        cls="visualization-panel",
+                    ),
+                    cls="visualization-section",
+                ),
                 # Conversation Section
                 Div(
                     H3("conversation", style="margin:0 0 16px 0"),
                     Div(
+                        P("awaiting connection...") if show_initial_messages else None,
                         id="conversation-content",
                         cls="conversation-content",
                     ),
@@ -271,10 +147,10 @@ def post():
                         Audio(
                             id="audio-player",
                             controls=True,
-                            disabled="disabled",
+                            preload="auto",
+                            disabled=audio_player_disabled,
                         ),
-                        P("awaiting connection..."),
-                        id="conversation-content",
+                        cls="audio-player-container",
                     ),
                     cls="conversation",
                 ),
@@ -283,7 +159,7 @@ def post():
                     Button(
                         "Push to Talk",
                         id="ptt-btn",
-                        disabled="disabled",
+                        disabled="disabled" if ptt_disabled else None,
                     ),
                     cls="controls",
                 ),
@@ -291,11 +167,185 @@ def post():
             ),
             cls="main-content",
         ),
-        cls="console-layout",
-        id="ws-container",  # Add an ID for OOB swap
-        hx_ext="ws",
-        hx_swap_oob="true",  # Enable OOB swap
+        # Optional audio stream container
+        (
+            Div(id="audio-stream-container", style="display:none;")
+            if include_audio_stream
+            else None
+        ),
+        **container_props,
     )
+
+
+@rt("/")
+def get():
+    return Container(create_layout())
+
+
+@rt("/connect")
+def post():
+    global start_time
+    start_time = datetime.now()
+
+    return create_layout(
+        button_text="disconnect",
+        show_initial_messages=False,
+        ptt_disabled=False,
+        include_audio_stream=True,
+        ws_props={
+            "hx_ext": "ws",
+            "ws_connect": "/wscon",
+            "ws_send": True,
+            "hx_trigger": "audioMessage",
+            "_": "on htmx:wsAfterMessage if event.detail.message.type === 'audio' call processAudioChunk(event.detail.message.data)",
+            "hx_swap_oob": "outerHTML",
+        },
+    )
+
+
+@rt("/disconnect")
+def post():
+    global start_time
+    start_time = None
+
+    return create_layout(
+        button_text="connect",
+        audio_player_disabled=True,
+        ws_props={
+            "hx_ext": "ws",
+            "hx_swap_oob": "true",
+        },
+    )
+
+
+async def relay_openai_message(send, parsed_event: ServerEvent):
+    """
+    Relay OpenAI messages to the client with appropriate UI updates.
+
+    Args:
+        send: Websocket send function
+        parsed_event: Parsed server event from OpenAI
+    """
+    event_type = parsed_event.type
+
+    if event_type == ServerEventTypes.SESSION_CREATED:
+        await send(
+            Div(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Session Created", cls="event-type"),
+                    Span(f"Session ID: {parsed_event.event_id}", cls="event-data"),
+                    cls="event-item",
+                ),
+                cls="event-log",
+                id="event-log",
+                hx_swap_oob="beforeend",
+            )
+        )
+    elif event_type == ServerEventTypes.SESSION_UPDATED:
+        await send(
+            Div(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Session Updated", cls="event-type"),
+                    Span(f"Session ID: {parsed_event.event_id}", cls="event-data"),
+                    cls="event-item",
+                ),
+                cls="event-log",
+                id="event-log",
+                hx_swap_oob="beforeend",
+            )
+        )
+    elif event_type == ServerEventTypes.CONVERSATION_CREATED:
+        await send(
+            Div(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Conversation Started", cls="event-type"),
+                    Span(
+                        f"Conversation ID: {parsed_event.conversation.id}",
+                        cls="event-data",
+                    ),
+                    cls="event-item",
+                ),
+                cls="event-log",
+                id="event-log",
+                hx_swap_oob="beforeend",
+            )
+        )
+    elif event_type == ServerEventTypes.CONVERSATION_ITEM_CREATED:
+        await send(
+            Div(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Conversation Item Created", cls="event-type"),
+                    Span(
+                        f"Conversation Item ID: {parsed_event.event_id}",
+                        cls="event-data",
+                    ),
+                    cls="event-item",
+                ),
+                cls="event-log",
+                id="event-log",
+                hx_swap_oob="beforeend",
+            )
+        )
+    elif (
+        event_type
+        == ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
+    ):
+        await send(
+            Div(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("User", cls="event-type"),
+                    Span(parsed_event.transcript, cls="event-data"),
+                    cls="event-item",
+                ),
+                cls="conversation-content",
+                id="conversation-content",
+                hx_swap_oob="beforeend",
+            )
+        )
+    elif event_type == ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE:
+        await send(
+            Div(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Assistant", cls="event-type"),
+                    Span(parsed_event.transcript, cls="event-data"),
+                    cls="event-item",
+                ),
+                cls="conversation-content",
+                id="conversation-content",
+                hx_swap_oob="beforeend",
+            )
+        )
+    elif event_type == ServerEventTypes.RESPONSE_AUDIO_DELTA:
+        if parsed_event.delta is not None:
+            audio_message = json.dumps(
+                {
+                    "type": "audio",
+                    "data": parsed_event.delta,  # OpenAI already provides base64-encoded PCM16
+                }
+            )
+            await send(audio_message)
+    elif event_type == ServerEventTypes.RESPONSE_DONE:
+        pass
+    elif event_type == ServerEventTypes.ERROR:
+        await send(
+            Div(
+                Div(
+                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                    Span("Error", cls="event-type"),
+                    Span(str(parsed_event.error), cls="event-data error"),
+                    cls="event-item",
+                ),
+                cls="conversation-content",
+                id="conversation-content",
+                hx_swap_oob="beforeend",
+            )
+        )
 
 
 async def on_connect(send):
@@ -303,175 +353,12 @@ async def on_connect(send):
         print("New WebSocket connection established")
         global openai_client
 
-        async def relay_openai_message(parsed_event: ServerEvent):
-            # Format the event data for display
-            event_type = parsed_event.type
-            event_details = parsed_event.model_dump(include={"event_id"})
+        # Create partial function with send already bound
+        message_handler = lambda event: relay_openai_message(send, event)
 
-            # Handle different event types for the conversation display
-            if event_type == ServerEventTypes.SESSION_CREATED:
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Session Created", cls="event-type"),
-                            Span(
-                                f"Session ID: {parsed_event.event_id}",
-                                cls="event-data",
-                            ),
-                            cls="event-item",
-                        ),
-                        cls="event-log",
-                        id="event-log",
-                        hx_swap_oob="beforeend",
-                    )
-                )
-
-            elif event_type == ServerEventTypes.SESSION_UPDATED:
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Session Updated", cls="event-type"),
-                            Span(
-                                f"Session ID: {parsed_event.event_id}",
-                                cls="event-data",
-                            ),
-                            cls="event-item",
-                        ),
-                        cls="event-log",
-                        id="event-log",
-                        hx_swap_oob="beforeend",
-                    )
-                )
-
-            elif event_type == ServerEventTypes.CONVERSATION_CREATED:
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Conversation Started", cls="event-type"),
-                            Span(
-                                f"Conversation ID: {parsed_event.conversation.id}",
-                                cls="event-data",
-                            ),
-                            cls="event-item",
-                        ),
-                        cls="event-log",
-                        id="event-log",
-                        hx_swap_oob="beforeend",
-                    )
-                )
-
-            elif event_type == ServerEventTypes.CONVERSATION_ITEM_CREATED:
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Conversation Item Created", cls="event-type"),
-                            Span(
-                                f"Conversation Item ID: {parsed_event.event_id}",
-                                cls="event-data",
-                            ),
-                            cls="event-item",
-                        ),
-                        cls="event-log",
-                        id="event-log",
-                        hx_swap_oob="beforeend",
-                    )
-                )
-
-            elif (
-                event_type
-                == ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
-            ):
-                # Add user message to conversation
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("User", cls="event-type"),
-                            Span(parsed_event.transcript, cls="event-data"),
-                            cls="event-item",
-                        ),
-                        cls="conversation-content",
-                        id="conversation-content",
-                        hx_swap_oob="beforeend",
-                    )
-                )
-
-            elif event_type == ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE:
-                # Add assistant message to conversation
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Assistant", cls="event-type"),
-                            Span(parsed_event.transcript, cls="event-data"),
-                            cls="event-item",
-                        ),
-                        cls="conversation-content",
-                        id="conversation-content",
-                        hx_swap_oob="beforeend",
-                    )
-                )
-
-            elif event_type == ServerEventTypes.RESPONSE_AUDIO_DELTA:
-                if parsed_event.delta is not None:
-                    # Create the same message format expected by the frontend
-                    audio_message = json.dumps(
-                        {
-                            "type": "audio",
-                            "data": parsed_event.delta,  # OpenAI already provides base64-encoded PCM16
-                        }
-                    )
-
-                    # Send the formatted audio message to the client using send
-                    await send(audio_message)
-
-            elif event_type == ServerEventTypes.RESPONSE_DONE:
-                # Handle completion of assistant's response
-                pass
-
-            elif event_type == ServerEventTypes.ERROR:
-                # Handle error events
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Error", cls="event-type"),
-                            Span(str(parsed_event.error), cls="event-data error"),
-                            cls="event-item",
-                        ),
-                        cls="conversation-content",
-                        id="conversation-content",
-                        hx_swap_oob="beforeend",
-                    )
-                )
-
-        openai_client = OpenAIRealtimeClient(message_callback=relay_openai_message)
+        openai_client = OpenAIRealtimeClient(message_callback=message_handler)
         await openai_client.start()
+
         message = Div(
             Div(
                 Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),

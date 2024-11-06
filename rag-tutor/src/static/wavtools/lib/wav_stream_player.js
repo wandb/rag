@@ -35,6 +35,14 @@ export class WavStreamPlayer {
       await this.context.resume();
     }
 
+    // Create and configure analyzer with better settings for visualization
+    const analyser = this.context.createAnalyser();
+    analyser.fftSize = 2048; // Reduced for better performance
+    analyser.smoothingTimeConstant = 0.8; // Increased for smoother visualization
+    analyser.minDecibels = -90;
+    analyser.maxDecibels = -10;
+    this.analyser = analyser;
+
     // Create a MediaStream from the audio context
     const dest = this.context.createMediaStreamDestination();
 
@@ -44,11 +52,6 @@ export class WavStreamPlayer {
       console.error(e);
       throw new Error(`Could not add audioWorklet module: ${this.scriptSrc}`);
     }
-
-    const analyser = this.context.createAnalyser();
-    analyser.fftSize = 8192;
-    analyser.smoothingTimeConstant = 0.1;
-    this.analyser = analyser;
 
     // Set up MediaRecorder to capture the audio stream
     this.mediaRecorder = new MediaRecorder(dest.stream);

@@ -44,7 +44,6 @@ body {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    max-height: 50%;
     position: relative;
     padding: 16px 16px 76px 16px;
 }
@@ -62,6 +61,7 @@ body {
     box-sizing: border-box;
     display: flex;
     align-items: center;
+    justify-content: center;
 }
 
 .conversation-content {
@@ -102,12 +102,12 @@ body {
 }
 
 .events-section {
-    flex: 1;
+    flex: 0 0 20%;
     display: flex;
     flex-direction: column;
     padding: 16px;
     overflow-y: auto;
-    max-height: 50%;
+    border-bottom: 1px solid #e0e0e0;
 }
 
 .event-log {
@@ -147,42 +147,110 @@ body {
     flex: 1;
 }
 
-#ptt-btn {
+#ptt-btn,
+#connect-btn {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
     font-family: 'Roboto Mono', monospace;
     font-size: 12px;
+    font-optical-sizing: auto;
     font-weight: 400;
+    font-style: normal;
     border: none;
-    background-color: #101010;
-    color: #ececf1;
+    background-color: #ececf1;
+    color: #101010;
     border-radius: 1000px;
     padding: 8px 24px;
     min-height: 42px;
-    min-width: 120px;
-    width: fit-content;
     transition: transform 0.1s ease-in-out, background-color 0.1s ease-in-out;
     outline: none;
     cursor: pointer;
 }
 
-#ptt-btn:hover:not([disabled]) {
-    background-color: #404040;
+#ptt-btn:hover:not([disabled]),
+#connect-btn:hover:not([disabled]) {
+    background-color: #d8d8d8;
 }
 
 #ptt-btn:active:not([disabled]),
-#ptt-btn.recording {
+#connect-btn:active:not([disabled]) {
     transform: translateY(1px);
-    background-color: #f00;
 }
 
-#ptt-btn[disabled] {
+#ptt-btn[disabled],
+#connect-btn[disabled] {
     color: #999;
     cursor: default;
 }
 
+/* Special styling for PTT recording state */
+#ptt-btn.recording {
+    background-color: #f00;
+    color: #ececf1;
+}
+
+#ptt-btn.recording:hover:not([disabled]) {
+    background-color: #f00;
+}
+
 #audio-player {
-    width: 100%;
+    width: 50%;
     height: 32px;
+    margin: 0 auto;
+}
+
+.visualization-section {
+    flex: 0 0 20%;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    border-bottom: 1px solid #e0e0e0;
+    overflow: hidden;
+}
+
+.visualization-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.visualization {
+    display: flex;
+    gap: 16px;
+    justify-content: stretch;
+    height: 100%;
+    max-height: 160px;
+    padding: 8px;
+}
+
+.visualization-entry {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    max-width: none;
+}
+
+.visualization-entry h4 {
+    margin-bottom: 4px !important;
+    font-size: 0.9em;
+    text-align: center;
+}
+
+.visualization-entry canvas {
+    width: 100%;
+    height: 100px;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    background: #f8f8f8;
+}
+
+.visualization-entry.client {
+    color: #0099ff;
+}
+
+.visualization-entry.server {
+    color: #009900;
 }

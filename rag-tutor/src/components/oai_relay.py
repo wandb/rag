@@ -5,14 +5,8 @@ import os
 import websockets
 
 from src.components.models import (
-    ClientEventTypes,
-    InputAudioTranscription,
-    ResponseCreate,
-    ServerEventTypes,
-    Session,
-    SessionUpdate,
-    parse_server_event,
-)
+    ClientEventTypes, InputAudioTranscription, ResponseCreate, ServerEventTypes, Session, SessionUpdate,
+    parse_server_event)
 
 
 class OpenAIRealtimeClient:
