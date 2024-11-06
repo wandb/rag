@@ -6,7 +6,12 @@ from fasthtml.common import *
 from pydub import AudioSegment
 
 from src.components.models import (
-    ClientEventTypes, InputAudioBufferAppend, InputAudioBufferCommit, ServerEvent, ServerEventTypes)
+    ClientEventTypes,
+    InputAudioBufferAppend,
+    InputAudioBufferCommit,
+    ServerEvent,
+    ServerEventTypes,
+)
 from src.components.oai_relay import OpenAIRealtimeClient
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
@@ -378,6 +383,48 @@ class OpenAIMessageHandler:
             f"Sent audio buffer: {metadata['sampleRate']}Hz, mono channel, {metadata['duration']}s"
         )
 
+    async def process_message(self, data: dict, send) -> None:
+        """Process incoming WebSocket messages"""
+        msg_type = data.get("type")
+        print(f"Received message: {msg_type}")
+
+        if msg_type == "voice_config":
+            # Configure the OpenAI client with the selected voice
+            voice = data.get("voice")
+            if self.openai_client:
+                await self.openai_client.configure_session(voice=voice)
+                await send_event_log(
+                    send, "Voice Configuration", f"Set voice to: {voice}"
+                )
+
+        elif msg_type == "cancel":
+            print("Audio streaming cancelled")
+            if hasattr(self, "current_task"):
+                self.current_task.cancel()
+            await send_event_log(send, "Cancelled", "Audio streaming cancelled")
+            return
+
+        elif msg_type == "audio":
+            # Process audio data from the client
+            audio_data = data.get("data")
+            metadata = data.get("metadata", {})
+            if audio_data:
+                try:
+                    await self.process_user_audio(audio_data, metadata)
+                    await send_event_log(
+                        send, "Audio received", f"Length: {len(audio_data)} bytes"
+                    )
+                except Exception as e:
+                    print(f"Error processing audio: {e}")
+                    await send_event_log(
+                        send, "Error", f"Failed to process audio: {str(e)}"
+                    )
+        else:
+            print(f"Unknown message type: {msg_type}")
+            await send_event_log(
+                send, "Unknown Event", f"Received unknown message type: {msg_type}"
+            )
+
 
 message_handler = OpenAIMessageHandler()
 
@@ -391,26 +438,7 @@ async def myws(data, send):
         return
 
     try:
-        msg_type = data.get("type")
-
-        if msg_type == "cancel":
-            print("Audio streaming cancelled")
-            if hasattr(myws, "current_task"):
-                myws.current_task.cancel()
-            await send_event_log(send, "Cancelled", "Audio streaming cancelled")
-            return
-
-        if msg_type == "audio":
-            audio_data = data.get("data")
-            metadata = data.get("metadata", {})
-            if audio_data:
-                await message_handler.process_user_audio(audio_data, metadata)
-                await send_event_log(
-                    send, "Audio received", f"Length: {len(audio_data)} bytes"
-                )
-        else:
-            await send_event_log(send, "Event received", str(data.get("data", "")))
-
+        await message_handler.process_message(data, send)
     except asyncio.CancelledError:
         print("Task was cancelled")
     except Exception as e:

@@ -27,18 +27,20 @@ class OpenAIRealtimeClient:
                 "OpenAI-Beta": "realtime=v1",
             },
         )
+        # Note: We'll wait for the voice config before sending the session update
 
-        # Send initial configuration message
+    async def configure_session(self, voice=None):
+        """Configure the session with optional voice setting"""
         config_event = SessionUpdate(
             session=Session(
                 modalities=["text", "audio"],
                 input_audio_transcription=InputAudioTranscription(model="whisper-1"),
                 turn_detection=None,
+                voice=voice,  # Add voice to session configuration
             )
         )
 
         update_event = config_event.model_dump(exclude_none=True, mode="json")
-
         update_event["session"]["turn_detection"] = None
         update_event = json.dumps(update_event)
 
@@ -50,7 +52,6 @@ class OpenAIRealtimeClient:
             await self.connect()
             # Create the task but don't await it
             self.task = asyncio.create_task(self.receive_messages())
-            # Don't await self.task here
         except Exception as e:
             print(f"WebSocket error: {e}")
             if self.ws:

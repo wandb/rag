@@ -367,11 +367,11 @@ async function processAudioChunk(base64Data) {
             if (streamPlayer) {
                 await streamPlayer.reset();
 
-                // Add this: Ensure audio is connected to analyzer
-                if (audioElement && streamPlayer.context) {
-                    const source = streamPlayer.context.createMediaElementSource(audioElement);
-                    source.connect(streamPlayer.analyser);
-                    source.connect(streamPlayer.context.destination);
+                // Only create the media element source connection if it hasn't been done before
+                if (audioElement && streamPlayer.context && !streamPlayer.sourceNode) {
+                    streamPlayer.sourceNode = streamPlayer.context.createMediaElementSource(audioElement);
+                    streamPlayer.sourceNode.connect(streamPlayer.analyser);
+                    streamPlayer.sourceNode.connect(streamPlayer.context.destination);
                 }
             }
             isPlaying = true;
@@ -484,13 +484,35 @@ htmx.config.wsReconnectDelay = 'full-jitter';
 htmx.config.wsBinaryType = 'blob';
 
 // WebSocket Connection Lifecycle Events
-htmx.on('htmx:wsConnecting', (evt) => {
-    // console.log('Connecting to WebSocket...', evt.detail.elt.id);
-});
+// htmx.on('htmx:wsConnecting', (evt) => {
+//     // Get the voice selection
+//     const voiceSelector = document.getElementById('voice-selector');
+//     if (voiceSelector) {
+//         const selectedVoice = voiceSelector.value;
+//         // Store the selected voice for use after connection
+//         evt.detail.elt.dataset.selectedVoice = selectedVoice;
+//     }
+// });
 
 htmx.on('htmx:wsOpen', async (evt) => {
-    // console.log('WebSocket Connected', evt.detail.elt.id);
     await initializeAudioPlayer(false);
+
+    // Send the voice configuration message
+    const voiceSelector = document.getElementById('voice-selector');
+    if (voiceSelector) {
+        const selectedVoice = voiceSelector.value;
+        // Disable the selector after connection
+        voiceSelector.disabled = true;
+
+        if (selectedVoice) {
+            const voiceConfig = {
+                type: 'voice_config',
+                voice: selectedVoice
+            };
+            // Send the configuration via WebSocket
+            evt.detail.socketWrapper.send(JSON.stringify(voiceConfig));
+        }
+    }
 });
 
 // Clean up when WebSocket closes
@@ -499,9 +521,9 @@ htmx.on('htmx:wsClose', async (evt) => {
     audioChunks = []; // Clear stored chunks
 
     try {
-        if (streamPlayer) {
-            await streamPlayer.interrupt(); // This will stop playback
-            streamPlayer = null;
+        if (streamPlayer && streamPlayer.sourceNode) {
+            streamPlayer.sourceNode.disconnect();
+            streamPlayer.sourceNode = null;
         }
 
         if (audioElement) {
@@ -522,6 +544,12 @@ htmx.on('htmx:wsClose', async (evt) => {
     }
 
     isPlaying = false;  // Reset playing state
+
+    // Re-enable the voice selector when connection closes
+    const voiceSelector = document.getElementById('voice-selector');
+    if (voiceSelector) {
+        voiceSelector.disabled = false;
+    }
 });
 
 htmx.on('htmx:wsError', (evt) => {
@@ -615,6 +643,12 @@ htmx.on('htmx:beforeRequest', async function (evt) {
     const path = evt.detail.pathInfo.requestPath;
     if (path === '/connect') {
         try {
+            // Store the current voice selection before the request
+            const voiceSelector = document.getElementById('voice-selector');
+            if (voiceSelector) {
+                localStorage.setItem('selectedVoice', voiceSelector.value);
+            }
+
             if (!recorder) {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const tempContext = new AudioContext();
@@ -640,6 +674,12 @@ htmx.on('htmx:beforeRequest', async function (evt) {
             evt.preventDefault();
         }
     } else if (path === '/disconnect') {
+        // Store the current voice selection before disconnecting
+        const voiceSelector = document.getElementById('voice-selector');
+        if (voiceSelector) {
+            localStorage.setItem('selectedVoice', voiceSelector.value);
+        }
+
         audioChunks = [];
         if (audioElement) {
             audioElement.removeAttribute('src'); // Remove src instead of setting to empty string
@@ -673,6 +713,15 @@ htmx.on('htmx:afterSwap', function (evt) {
     const pttButton = document.getElementById('ptt-btn');
     if (pttButton) {
         // console.log('Button swapped, new disabled state:', pttButton.disabled);
+    }
+
+    // Restore voice selection if available
+    const voiceSelector = document.getElementById('voice-selector');
+    if (voiceSelector) {
+        const savedVoice = localStorage.getItem('selectedVoice');
+        if (savedVoice) {
+            voiceSelector.value = savedVoice;
+        }
     }
 
     // Check if the swapped element is either the event log or conversation content
