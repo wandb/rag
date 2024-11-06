@@ -6,12 +6,7 @@ from fasthtml.common import *
 from pydub import AudioSegment
 
 from src.components.models import (
-    ClientEventTypes,
-    InputAudioBufferAppend,
-    InputAudioBufferCommit,
-    ServerEvent,
-    ServerEventTypes,
-)
+    ClientEventTypes, InputAudioBufferAppend, InputAudioBufferCommit, ServerEvent, ServerEventTypes)
 from src.components.oai_relay import OpenAIRealtimeClient
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
@@ -58,9 +53,6 @@ app, rt = fast_app(
 start_time = None
 
 
-openai_client = None
-
-
 def create_layout(
     button_text="connect",
     button_props={},
@@ -92,6 +84,19 @@ def create_layout(
         Div(
             Span("realtime console", style="margin-left:12px"),
             Div(style="flex-grow:1"),
+            # Add voice selector dropdown
+            Select(
+                Option("alloy", value="alloy", selected=True),
+                Option("ash", value="ash"),
+                Option("ballad", value="ballad"),
+                Option("coral", value="coral"),
+                Option("echo", value="echo"),
+                Option("sage", value="sage"),
+                Option("shimmer", value="shimmer"),
+                Option("verse", value="verse"),
+                id="voice-selector",
+                cls="select select-bordered select-sm w-32 mr-2",
+            ),
             Button(button_text, **button_props),
             cls="top-bar",
         ),
@@ -218,212 +223,168 @@ def post():
     )
 
 
-async def relay_openai_message(send, parsed_event: ServerEvent):
-    """
-    Relay OpenAI messages to the client with appropriate UI updates.
-
-    Args:
-        send: Websocket send function
-        parsed_event: Parsed server event from OpenAI
-    """
-    event_type = parsed_event.type
-
-    if event_type == ServerEventTypes.SESSION_CREATED:
-        await send(
-            Div(
-                Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Session Created", cls="event-type"),
-                    Span(f"Session ID: {parsed_event.event_id}", cls="event-data"),
-                    cls="event-item",
-                ),
-                cls="event-log",
-                id="event-log",
-                hx_swap_oob="beforeend",
-            )
-        )
-    elif event_type == ServerEventTypes.SESSION_UPDATED:
-        await send(
-            Div(
-                Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Session Updated", cls="event-type"),
-                    Span(f"Session ID: {parsed_event.event_id}", cls="event-data"),
-                    cls="event-item",
-                ),
-                cls="event-log",
-                id="event-log",
-                hx_swap_oob="beforeend",
-            )
-        )
-    elif event_type == ServerEventTypes.CONVERSATION_CREATED:
-        await send(
-            Div(
-                Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Conversation Started", cls="event-type"),
-                    Span(
-                        f"Conversation ID: {parsed_event.conversation.id}",
-                        cls="event-data",
-                    ),
-                    cls="event-item",
-                ),
-                cls="event-log",
-                id="event-log",
-                hx_swap_oob="beforeend",
-            )
-        )
-    elif event_type == ServerEventTypes.CONVERSATION_ITEM_CREATED:
-        await send(
-            Div(
-                Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Conversation Item Created", cls="event-type"),
-                    Span(
-                        f"Conversation Item ID: {parsed_event.event_id}",
-                        cls="event-data",
-                    ),
-                    cls="event-item",
-                ),
-                cls="event-log",
-                id="event-log",
-                hx_swap_oob="beforeend",
-            )
-        )
-    elif (
-        event_type
-        == ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
-    ):
-        await send(
-            Div(
-                Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("User", cls="event-type"),
-                    Span(parsed_event.transcript, cls="event-data"),
-                    cls="event-item",
-                ),
-                cls="conversation-content",
-                id="conversation-content",
-                hx_swap_oob="beforeend",
-            )
-        )
-    elif event_type == ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE:
-        await send(
-            Div(
-                Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Assistant", cls="event-type"),
-                    Span(parsed_event.transcript, cls="event-data"),
-                    cls="event-item",
-                ),
-                cls="conversation-content",
-                id="conversation-content",
-                hx_swap_oob="beforeend",
-            )
-        )
-    elif event_type == ServerEventTypes.RESPONSE_AUDIO_DELTA:
-        if parsed_event.delta is not None:
-            audio_message = json.dumps(
-                {
-                    "type": "audio",
-                    "data": parsed_event.delta,  # OpenAI already provides base64-encoded PCM16
-                }
-            )
-            await send(audio_message)
-    elif event_type == ServerEventTypes.RESPONSE_DONE:
-        pass
-    elif event_type == ServerEventTypes.ERROR:
-        await send(
-            Div(
-                Div(
-                    Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                    Span("Error", cls="event-type"),
-                    Span(str(parsed_event.error), cls="event-data error"),
-                    cls="event-item",
-                ),
-                cls="conversation-content",
-                id="conversation-content",
-                hx_swap_oob="beforeend",
-            )
-        )
-
-
-async def on_connect(send):
-    try:
-        print("New WebSocket connection established")
-        global openai_client
-
-        # Create partial function with send already bound
-        message_handler = lambda event: relay_openai_message(send, event)
-
-        openai_client = OpenAIRealtimeClient(message_callback=message_handler)
-        await openai_client.start()
-
-        message = Div(
+async def send_event_log(send, event_type: str, event_data: str):
+    """Utility function to send event log updates via HTMX"""
+    await send(
+        Div(
             Div(
                 Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                Span("Connected", cls="event-type"),
-                Span("New WebSocket connection established", cls="event-data"),
+                Span(event_type, cls="event-type"),
+                Span(event_data, cls="event-data"),
                 cls="event-item",
             ),
             cls="event-log",
             id="event-log",
             hx_swap_oob="beforeend",
         )
-        await send(message)
-    except Exception as e:
-        print(f"Error sending initial message: {e}")
-
-
-async def on_disconnect():
-    global openai_client
-    if openai_client:
-        await openai_client.stop()
-        openai_client = None
-    print("WebSocket disconnected")
-
-
-async def process_user_audio(audio_data: str, metadata: dict) -> None:
-    """
-    Process audio data and send it to OpenAI client
-
-    Args:
-        audio_data: Base64 encoded WAV data
-        metadata: Audio metadata containing sampleRate and duration
-    """
-    global openai_client
-    print("Received audio data")
-
-    # Decode base64 WAV data
-    wav_data = base64.b64decode(audio_data)
-
-    # Load into pydub and convert to mono
-    audio = AudioSegment.from_wav(io.BytesIO(wav_data))
-    # Resample to 24kHz mono pcm16
-    pcm_audio = audio.set_frame_rate(24000).set_channels(1).set_sample_width(2).raw_data
-    # Encode to base64 string
-    pcm_base64 = base64.b64encode(pcm_audio).decode()
-
-    # Create the audio buffer append event
-    audio_event = InputAudioBufferAppend(
-        type=ClientEventTypes.INPUT_AUDIO_BUFFER_APPEND, audio=pcm_base64
-    )
-
-    # Send audio buffer
-    await openai_client.send(audio_event.model_dump_json(exclude_none=True))
-
-    # Send commit event
-    commit_event = InputAudioBufferCommit(
-        type=ClientEventTypes.INPUT_AUDIO_BUFFER_COMMIT
-    )
-    await openai_client.send(commit_event.model_dump_json(exclude_none=True))
-
-    print(
-        f"Sent audio buffer: {metadata['sampleRate']}Hz, mono channel, {metadata['duration']}s"
     )
 
 
-@app.ws("/wscon", conn=on_connect, disconn=on_disconnect)
+async def send_conversation_message(
+    send, speaker: str, message: str, is_error: bool = False
+):
+    """Utility function to send conversation updates via HTMX"""
+    await send(
+        Div(
+            Div(
+                Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
+                Span(speaker, cls="event-type"),
+                Span(message, cls=f"event-data{'error' if is_error else ''}"),
+                cls="event-item",
+            ),
+            cls="conversation-content",
+            id="conversation-content",
+            hx_swap_oob="beforeend",
+        )
+    )
+
+
+class OpenAIMessageHandler:
+    def __init__(self):
+        self.openai_client = None
+
+    async def relay_openai_message(self, send, parsed_event: ServerEvent):
+        """
+        Relay OpenAI messages to the client with appropriate UI updates.
+
+        Args:
+            send: Websocket send function
+            parsed_event: Parsed server event from OpenAI
+        """
+        match parsed_event.type:
+            case ServerEventTypes.SESSION_CREATED:
+                await send_event_log(
+                    send, "Session Created", f"Session ID: {parsed_event.event_id}"
+                )
+
+            case ServerEventTypes.SESSION_UPDATED:
+                await send_event_log(
+                    send, "Session Updated", f"Session ID: {parsed_event.event_id}"
+                )
+
+            case ServerEventTypes.CONVERSATION_CREATED:
+                await send_event_log(
+                    send,
+                    "Conversation Started",
+                    f"Conversation ID: {parsed_event.conversation.id}",
+                )
+
+            case ServerEventTypes.CONVERSATION_ITEM_CREATED:
+                await send_event_log(
+                    send,
+                    "Conversation Item Created",
+                    f"Conversation Item ID: {parsed_event.event_id}",
+                )
+
+            case ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED:
+                await send_conversation_message(send, "User", parsed_event.transcript)
+
+            case ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE:
+                await send_conversation_message(
+                    send, "Assistant", parsed_event.transcript
+                )
+
+            case ServerEventTypes.RESPONSE_AUDIO_DELTA:
+                if parsed_event.delta is not None:
+                    audio_message = json.dumps(
+                        {
+                            "type": "audio",
+                            "data": parsed_event.delta,
+                        }
+                    )
+                    await send(audio_message)
+
+            case ServerEventTypes.ERROR:
+                await send_conversation_message(
+                    send, "Error", str(parsed_event.error), is_error=True
+                )
+
+    async def on_connect(self, send):
+        try:
+            print("New WebSocket connection established")
+            message_handler = lambda event: self.relay_openai_message(send, event)
+            self.openai_client = OpenAIRealtimeClient(message_callback=message_handler)
+            await self.openai_client.start()
+
+            await send_event_log(
+                send, "Connected", "New WebSocket connection established"
+            )
+        except Exception as e:
+            print(f"Error sending initial message: {e}")
+
+    async def on_disconnect(self):
+        if self.openai_client:
+            await self.openai_client.stop()
+            self.openai_client = None
+        print("WebSocket disconnected")
+
+    async def process_user_audio(self, audio_data: str, metadata: dict) -> None:
+        """
+        Process audio data and send it to OpenAI client
+
+        Args:
+            audio_data: Base64 encoded WAV data
+            metadata: Audio metadata containing sampleRate and duration
+        """
+        print("Received audio data")
+
+        # Decode base64 WAV data
+        wav_data = base64.b64decode(audio_data)
+
+        # Load into pydub and convert to mono
+        audio = AudioSegment.from_wav(io.BytesIO(wav_data))
+        # Resample to 24kHz mono pcm16
+        pcm_audio = (
+            audio.set_frame_rate(24000).set_channels(1).set_sample_width(2).raw_data
+        )
+        # Encode to base64 string
+        pcm_base64 = base64.b64encode(pcm_audio).decode()
+
+        # Create the audio buffer append event
+        audio_event = InputAudioBufferAppend(
+            type=ClientEventTypes.INPUT_AUDIO_BUFFER_APPEND, audio=pcm_base64
+        )
+
+        # Send audio buffer
+        await self.openai_client.send(audio_event.model_dump_json(exclude_none=True))
+
+        # Send commit event
+        commit_event = InputAudioBufferCommit(
+            type=ClientEventTypes.INPUT_AUDIO_BUFFER_COMMIT
+        )
+        await self.openai_client.send(commit_event.model_dump_json(exclude_none=True))
+
+        print(
+            f"Sent audio buffer: {metadata['sampleRate']}Hz, mono channel, {metadata['duration']}s"
+        )
+
+
+message_handler = OpenAIMessageHandler()
+
+
+@app.ws(
+    "/wscon", conn=message_handler.on_connect, disconn=message_handler.on_disconnect
+)
 async def myws(data, send):
     if not data:
         print("Skipping empty message")
@@ -432,70 +393,23 @@ async def myws(data, send):
     try:
         msg_type = data.get("type")
 
-        # Handle cancel event
         if msg_type == "cancel":
             print("Audio streaming cancelled")
-            # Clear any pending tasks
             if hasattr(myws, "current_task"):
                 myws.current_task.cancel()
-            await send(
-                Div(
-                    Div(
-                        Span(
-                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
-                        ),
-                        Span("Cancelled", cls="event-type"),
-                        Span("Audio streaming cancelled", cls="event-data"),
-                        cls="event-item",
-                    ),
-                    cls="event-log",
-                    id="event-log",
-                    hx_swap_oob="beforeend",
-                )
-            )
+            await send_event_log(send, "Cancelled", "Audio streaming cancelled")
             return
 
         if msg_type == "audio":
             audio_data = data.get("data")
             metadata = data.get("metadata", {})
             if audio_data:
-                await process_user_audio(audio_data, metadata)
-
-                # Send UI update
-                await send(
-                    Div(
-                        Div(
-                            Span(
-                                datetime.now().strftime("%H:%M:%S"),
-                                cls="event-timestamp",
-                            ),
-                            Span("Audio received", cls="event-type"),
-                            Span(f"Length: {len(audio_data)} bytes", cls="event-data"),
-                            cls="event-item",
-                        ),
-                        cls="event-log",
-                        id="event-log",
-                        hx_swap_oob="beforeend",
-                    )
+                await message_handler.process_user_audio(audio_data, metadata)
+                await send_event_log(
+                    send, "Audio received", f"Length: {len(audio_data)} bytes"
                 )
-
         else:
-            # Handle other event types
-            await send(
-                Div(
-                    Div(
-                        Span(
-                            datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"
-                        ),
-                        Span("Event received", cls="event-type"),
-                        Span(str(data.get("data", "")), cls="event-data"),
-                        cls="event-item",
-                    ),
-                    cls="event-log",
-                    id="event-log",
-                    hx_swap_oob="beforeend",
-                )
-            )
+            await send_event_log(send, "Event received", str(data.get("data", "")))
 
     except asyncio.CancelledError:
         print("Task was cancelled")
