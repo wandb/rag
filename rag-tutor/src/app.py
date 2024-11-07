@@ -6,12 +6,8 @@ from fasthtml.common import *
 from pydub import AudioSegment
 
 from src.components.models import (
-    ClientEventTypes,
-    InputAudioBufferAppend,
-    InputAudioBufferCommit,
-    ServerEvent,
-    ServerEventTypes,
-)
+    ClientEventTypes, ConversationItem, ConversationItemContent, ConversationItemCreate, InputAudioBufferAppend,
+    InputAudioBufferCommit, ResponseCreate, ServerEvent, ServerEventTypes)
 from src.components.oai_relay import OpenAIRealtimeClient
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
@@ -64,7 +60,7 @@ def create_layout(
     ws_props={},
     show_initial_messages=True,
     audio_player_disabled=False,
-    ptt_disabled=True,
+    controls_disabled=True,
     include_audio_stream=False,
 ):
     """Creates the main layout with configurable options"""
@@ -164,16 +160,30 @@ def create_layout(
                     ),
                     cls="conversation",
                 ),
-                # Controls
+                cls="events-panel",
+            ),
+            # Controls moved here, outside of events-panel
+            Div(
                 Div(
+                    Input(
+                        type="text",
+                        id="text-input",
+                        placeholder="Type your message...",
+                        disabled="disabled" if controls_disabled else None,
+                    ),
+                    Button(
+                        "Send",
+                        id="send-btn",
+                        disabled="disabled" if controls_disabled else None,
+                    ),
                     Button(
                         "Push to Talk",
                         id="ptt-btn",
-                        disabled="disabled" if ptt_disabled else None,
+                        disabled="disabled" if controls_disabled else None,
                     ),
-                    cls="controls",
+                    cls="controls-inner",
                 ),
-                cls="events-panel",
+                cls="controls",
             ),
             cls="main-content",
         ),
@@ -200,14 +210,13 @@ def post():
     return create_layout(
         button_text="disconnect",
         show_initial_messages=False,
-        ptt_disabled=False,
+        controls_disabled=False,
         include_audio_stream=True,
         ws_props={
             "hx_ext": "ws",
             "ws_connect": "/wscon",
             "ws_send": True,
-            "hx_trigger": "audioMessage",
-            "_": "on htmx:wsAfterMessage if event.detail.message.type === 'audio' call processAudioChunk(event.detail.message.data)",
+            "hx_trigger": "audioMessage, textMessage",
             "hx_swap_oob": "outerHTML",
         },
     )
@@ -326,7 +335,6 @@ class OpenAIMessageHandler:
 
     async def on_connect(self, send):
         try:
-            print("New WebSocket connection established")
             message_handler = lambda event: self.relay_openai_message(send, event)
             self.openai_client = OpenAIRealtimeClient(message_callback=message_handler)
             await self.openai_client.start()
@@ -341,7 +349,6 @@ class OpenAIMessageHandler:
         if self.openai_client:
             await self.openai_client.stop()
             self.openai_client = None
-        print("WebSocket disconnected")
 
     async def process_user_audio(self, audio_data: str, metadata: dict) -> None:
         """
@@ -379,51 +386,78 @@ class OpenAIMessageHandler:
         )
         await self.openai_client.send(commit_event.model_dump_json(exclude_none=True))
 
-        print(
-            f"Sent audio buffer: {metadata['sampleRate']}Hz, mono channel, {metadata['duration']}s"
+    async def process_user_text(self, send, text_data: str) -> None:
+        """Process text input and send it to OpenAI client"""
+        print(f"Received text data: {text_data}")
+
+        # Create content for the conversation item
+        content = ConversationItemContent(type="input_text", text=text_data)
+
+        # Create the conversation item
+        conversation_item = ConversationItem(
+            type="message", role="user", content=[content]
         )
+
+        # Create the conversation item create event
+        create_event = ConversationItemCreate(
+            type=ClientEventTypes.CONVERSATION_ITEM_CREATE, item=conversation_item
+        )
+
+        # Send the event to OpenAI
+        await self.openai_client.send(create_event.model_dump_json(exclude_none=True))
+
+        # Create and send response create event to get the assistant's response
+        response_event = ResponseCreate(type=ClientEventTypes.RESPONSE_CREATE)
+        await self.openai_client.send(response_event.model_dump_json(exclude_none=True))
+
+        await send_conversation_message(send, "User", text_data)
 
     async def process_message(self, data: dict, send) -> None:
         """Process incoming WebSocket messages"""
         msg_type = data.get("type")
         print(f"Received message: {msg_type}")
 
-        if msg_type == "voice_config":
-            # Configure the OpenAI client with the selected voice
-            voice = data.get("voice")
-            if self.openai_client:
-                await self.openai_client.configure_session(voice=voice)
+        match msg_type:
+            case "voice_config":
+                if self.openai_client and (voice := data.get("voice")):
+                    await self.openai_client.configure_session(voice=voice)
+                    await send_event_log(
+                        send, "Voice Configuration", f"Set voice to: {voice}"
+                    )
+
+            case "cancel":
+                if hasattr(self, "current_task"):
+                    self.current_task.cancel()
+                await send_event_log(send, "Cancelled", "Audio streaming cancelled")
+
+            case "audio":
+                if audio_data := data.get("data"):
+                    try:
+                        await self.process_user_audio(
+                            audio_data, data.get("metadata", {})
+                        )
+                        await send_event_log(
+                            send, "Audio received", f"Length: {len(audio_data)} bytes"
+                        )
+                    except Exception as e:
+                        await send_event_log(
+                            send, "Error", f"Failed to process audio: {str(e)}"
+                        )
+
+            case "text":
+                if text_data := data.get("data"):
+                    try:
+                        await self.process_user_text(send, text_data)
+                        await send_event_log(send, "Text received", f"{text_data}")
+                    except Exception as e:
+                        await send_event_log(
+                            send, "Error", f"Failed to process text: {str(e)}"
+                        )
+
+            case _:
                 await send_event_log(
-                    send, "Voice Configuration", f"Set voice to: {voice}"
+                    send, "Unknown Event", f"Received unknown message type: {msg_type}"
                 )
-
-        elif msg_type == "cancel":
-            print("Audio streaming cancelled")
-            if hasattr(self, "current_task"):
-                self.current_task.cancel()
-            await send_event_log(send, "Cancelled", "Audio streaming cancelled")
-            return
-
-        elif msg_type == "audio":
-            # Process audio data from the client
-            audio_data = data.get("data")
-            metadata = data.get("metadata", {})
-            if audio_data:
-                try:
-                    await self.process_user_audio(audio_data, metadata)
-                    await send_event_log(
-                        send, "Audio received", f"Length: {len(audio_data)} bytes"
-                    )
-                except Exception as e:
-                    print(f"Error processing audio: {e}")
-                    await send_event_log(
-                        send, "Error", f"Failed to process audio: {str(e)}"
-                    )
-        else:
-            print(f"Unknown message type: {msg_type}")
-            await send_event_log(
-                send, "Unknown Event", f"Received unknown message type: {msg_type}"
-            )
 
 
 message_handler = OpenAIMessageHandler()

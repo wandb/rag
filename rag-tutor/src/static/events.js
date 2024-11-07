@@ -559,12 +559,18 @@ htmx.on('htmx:wsError', (evt) => {
 // WebSocket Message Handling Events
 htmx.on('htmx:wsConfigSend', (evt) => {
     const triggerEvent = evt.detail.triggeringEvent;
-    if (triggerEvent && triggerEvent.type === 'audioMessage') {
-        evt.detail.messageBody = JSON.stringify({
-            type: 'audio',
-            ...triggerEvent.detail
-        });
-        // console.log('Configured WebSocket message:', evt.detail.messageBody.substring(0, 100) + '...');
+    if (triggerEvent) {
+        if (triggerEvent.type === 'audioMessage') {
+            evt.detail.messageBody = JSON.stringify({
+                type: 'audio',
+                ...triggerEvent.detail
+            });
+        } else if (triggerEvent.type === 'textMessage') {
+            evt.detail.messageBody = JSON.stringify({
+                type: 'text',
+                ...triggerEvent.detail
+            });
+        }
     }
 });
 
@@ -709,6 +715,63 @@ htmx.on('htmx:beforeRequest', async function (evt) {
     }
 });
 
+// Add these functions at the top level
+function handleTextSend() {
+    console.log('handleTextSend called');
+    const sendButton = document.getElementById('send-btn');
+    const textInput = document.getElementById('text-input');
+    console.log('sendButton:', sendButton);
+    console.log('textInput:', textInput);
+    console.log('textInput value:', textInput?.value);
+
+    if (sendButton && textInput && !sendButton.disabled && textInput.value.trim()) {
+        const wsContainer = document.getElementById('ws-container');
+        console.log('wsContainer:', wsContainer);
+
+        if (wsContainer) {
+            const eventDetail = {
+                type: 'text',
+                data: textInput.value.trim()
+            };
+            console.log('Dispatching event with detail:', eventDetail);
+
+            const textMessageEvent = new CustomEvent('textMessage', {
+                bubbles: true,
+                detail: eventDetail
+            });
+            wsContainer.dispatchEvent(textMessageEvent);
+
+            // Clear the input after sending
+            textInput.value = '';
+        }
+    }
+}
+
+function setupTextInputHandlers() {
+    const sendButton = document.getElementById('send-btn');
+    const textInput = document.getElementById('text-input');
+
+    // Remove existing listeners first to prevent duplicates
+    if (sendButton) {
+        sendButton.removeEventListener('click', handleTextSend);
+        sendButton.addEventListener('click', handleTextSend);
+        console.log('Added click handler to send button');
+    }
+
+    if (textInput) {
+        const keydownHandler = function (event) {
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                handleTextSend();
+            }
+        };
+        textInput.removeEventListener('keydown', keydownHandler);
+        textInput.addEventListener('keydown', keydownHandler);
+        console.log('Added keydown handler to text input');
+    }
+}
+
+// Update the existing htmx:afterSwap handler
 htmx.on('htmx:afterSwap', function (evt) {
     const pttButton = document.getElementById('ptt-btn');
     if (pttButton) {
@@ -728,29 +791,71 @@ htmx.on('htmx:afterSwap', function (evt) {
     if (evt.detail.target.id === 'event-log' || evt.detail.target.id === 'conversation-content') {
         scrollToBottom(evt.detail.target.id);
     }
+
+    // Set up text input handlers after swap
+    setupTextInputHandlers();
 });
 
-// DOM event listeners
+// Update the existing DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function () {
-    // PTT button event listeners
-    document.addEventListener('mousedown', function (event) {
-        const pttButton = event.target.closest('#ptt-btn');
+    // Set up text input handlers
+    setupTextInputHandlers();
+
+    // Existing PTT button event listeners
+    function handlePTTStart(pttButton) {
         if (pttButton && !pttButton.disabled && !isProcessing) {
             startRecording();
             pttButton.style.backgroundColor = '#ff4444';
             pttButton.style.color = 'white';
             pttButton.textContent = 'Release to Send';
         }
-    });
+    }
 
-    document.addEventListener('mouseup', function (event) {
-        const pttButton = event.target.closest('#ptt-btn');
+    function handlePTTEnd(pttButton) {
         if (pttButton && !pttButton.disabled && isRecording) {
             stopRecording();
             pttButton.style.backgroundColor = '';
             pttButton.style.color = '';
             pttButton.textContent = 'Push to Talk';
         }
+    }
+
+    // Mouse events
+    document.addEventListener('mousedown', function (event) {
+        const pttButton = event.target.closest('#ptt-btn');
+        handlePTTStart(pttButton);
     });
+
+    document.addEventListener('mouseup', function (event) {
+        const pttButton = event.target.closest('#ptt-btn');
+        handlePTTEnd(pttButton);
+    });
+
+    // Keyboard events
+    let spacebarPressed = false;
+    document.addEventListener('keydown', function (event) {
+        // Check if the target is the text input
+        const isTextInput = event.target.id === 'text-input';
+
+        // Only handle PTT if not in text input and spacebar is pressed
+        if (event.code === 'Space' && !spacebarPressed && !isTextInput) {
+            // Prevent spacebar from scrolling the page
+            event.preventDefault();
+            spacebarPressed = true;
+            const pttButton = document.getElementById('ptt-btn');
+            handlePTTStart(pttButton);
+        }
+    });
+
+    document.addEventListener('keyup', function (event) {
+        // Only handle PTT release if not in text input
+        if (event.code === 'Space' && spacebarPressed && event.target.id !== 'text-input') {
+            event.preventDefault();
+            spacebarPressed = false;
+            const pttButton = document.getElementById('ptt-btn');
+            handlePTTEnd(pttButton);
+        }
+    });
+
 });
 

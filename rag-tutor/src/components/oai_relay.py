@@ -77,83 +77,31 @@ class OpenAIRealtimeClient:
                     message_data = json.loads(message)
                     parsed_event = parse_server_event(message_data)
 
-                    # Handle different event types
-                    if parsed_event.type == ServerEventTypes.SESSION_CREATED:
-                        # Session has been created
-                        print("Session created:", parsed_event.event_id)
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
+                    match parsed_event.type:
+                        case (
+                            ServerEventTypes.SESSION_CREATED
+                            | ServerEventTypes.SESSION_UPDATED
+                            | ServerEventTypes.CONVERSATION_CREATED
+                            | ServerEventTypes.CONVERSATION_ITEM_CREATED
+                            | ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE
+                            | ServerEventTypes.RESPONSE_AUDIO_DELTA
+                            | ServerEventTypes.RESPONSE_DONE
+                            | ServerEventTypes.ERROR
+                        ):
+                            if self.message_callback:
+                                await self.message_callback(parsed_event)
 
-                    elif parsed_event.type == ServerEventTypes.SESSION_UPDATED:
-                        # Session has been updated
-                        print("Session updated:", parsed_event.event_id)
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
-
-                    elif parsed_event.type == ServerEventTypes.CONVERSATION_CREATED:
-                        # New conversation started
-                        print("Conversation created:", parsed_event.conversation.id)
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
-
-                    elif (
-                        parsed_event.type == ServerEventTypes.CONVERSATION_ITEM_CREATED
-                    ):
-                        print("Conversation item created:", parsed_event.event_id)
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
-
-                    elif (
-                        parsed_event.type
-                        == ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE
-                    ):
-                        # Assistant's response transcript is complete
-                        print(
-                            f"Assistant's response transcript is complete: {parsed_event.event_id}"
-                        )
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
-
-                    elif (
-                        parsed_event.type
-                        == ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
-                    ):
-                        # User's audio has been transcribed
-                        print(
-                            "User audio transcription completed:", parsed_event.event_id
-                        )
-                        # Create and send response create event
-                        response_event = ResponseCreate(
-                            type=ClientEventTypes.RESPONSE_CREATE
-                        )
-                        await self.send(
-                            response_event.model_dump_json(exclude_none=True)
-                        )
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
-
-                    elif parsed_event.type == ServerEventTypes.RESPONSE_AUDIO_DELTA:
-                        print(
-                            f"Received chunk of assistant's audio response: {parsed_event.event_id}"
-                        )
-                        # Received chunk of assistant's audio response
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
-
-                    elif parsed_event.type == ServerEventTypes.RESPONSE_DONE:
-                        print(
-                            f"Assistant's complete response is done: {parsed_event.event_id}"
-                        )
-                        # Assistant's complete response is done
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
-
-                    elif parsed_event.type == ServerEventTypes.ERROR:
-                        print(
-                            f"Error from server: {parsed_event.error.model_dump_json(exclude_none=True)}"
-                        )
-                        if self.message_callback:
-                            await self.message_callback(parsed_event)
+                        case (
+                            ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
+                        ):
+                            response_event = ResponseCreate(
+                                type=ClientEventTypes.RESPONSE_CREATE
+                            )
+                            await self.send(
+                                response_event.model_dump_json(exclude_none=True)
+                            )
+                            if self.message_callback:
+                                await self.message_callback(parsed_event)
 
                 except ValueError as e:
                     print(f"Error parsing event: {e}")
