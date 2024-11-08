@@ -347,9 +347,9 @@ async function initializeAudioPlayer(autoplay = true) {
     }
 }
 
-// Function to process incoming audio chunks
-let updateTimeout = null;
-const UPDATE_DELAY = 1000; // Update every second
+
+// Add state tracking at the top level
+let isAudioStreamComplete = false;
 
 async function processAudioChunk(base64Data) {
     try {
@@ -359,20 +359,19 @@ async function processAudioChunk(base64Data) {
 
         // For the first chunk, reset everything
         if (isFirstChunk) {
-            audioChunks = []; // Clear existing chunks
             if (streamPlayer) {
                 await streamPlayer.reset();
-
-                // Only create the media element source connection if it hasn't been done before
-                if (audioElement && streamPlayer.context && !streamPlayer.sourceNode) {
-                    streamPlayer.sourceNode = streamPlayer.context.createMediaElementSource(audioElement);
-                    streamPlayer.sourceNode.connect(streamPlayer.analyser);
-                    streamPlayer.sourceNode.connect(streamPlayer.context.destination);
-                }
             }
             isPlaying = true;
             isFirstChunk = false;
-            updateAudioSource(true);
+            audioChunks = [];
+            isAudioStreamComplete = false; // Reset completion flag
+
+            // Clean up old URL
+            if (audioElement.src) {
+                URL.revokeObjectURL(audioElement.src);
+                audioElement.src = '';
+            }
         }
 
         // Convert base64 to binary data
@@ -386,17 +385,73 @@ async function processAudioChunk(base64Data) {
         // Store the chunk
         audioChunks.push(uint8Array);
 
-        // Clear existing timeout
-        if (updateTimeout) {
-            clearTimeout(updateTimeout);
-        }
+        // Calculate buffered audio duration
+        const totalSamples = audioChunks.reduce((acc, chunk) => acc + (chunk.length / 2), 0);
+        const bufferedSeconds = totalSamples / OPENAI_SAMPLE_RATE;
 
-        // Process immediately for the last chunk (when it's small)
-        if (uint8Array.length < 4096) {  // Assuming small chunks are final chunks
-            updateAudioSource(false);
-        } else {
-            // For larger chunks, debounce the updates
-            updateTimeout = setTimeout(() => updateAudioSource(false), UPDATE_DELAY);
+        // Minimum buffer size before starting playback (250ms)
+        const MIN_BUFFER_SIZE = 0.25;
+
+        // Update conditions:
+        // 1. Initial buffer accumulation
+        // 2. Regular updates during playback
+        const hasMinimumBuffer = bufferedSeconds >= MIN_BUFFER_SIZE;
+        const isFirstPlay = !audioElement.duration;
+        const currentPlaybackTime = audioElement.currentTime || 0;
+        const currentDuration = audioElement.duration || 0;
+
+        // Should update if:
+        // 1. First play with minimum buffer
+        // 2. Stream is complete (final update)
+        // 3. Near end of current playback with new data
+        const shouldUpdate = isFirstPlay ? hasMinimumBuffer : (
+            isAudioStreamComplete || (
+                currentDuration - currentPlaybackTime < 0.5 &&
+                bufferedSeconds > currentDuration + 0.2
+            )
+        );
+
+        if (shouldUpdate) {
+            const wavHeader = createWavHeader(audioChunks);
+            const completeChunks = [wavHeader, ...audioChunks];
+            const audioBlob = new Blob(completeChunks, { type: 'audio/wav' });
+
+            const currentTime = audioElement.currentTime;
+            const wasPlaying = !audioElement.paused && !audioElement.ended;
+
+            // Create new URL and clean up old one
+            const url = URL.createObjectURL(audioBlob);
+            const oldSrc = audioElement.src;
+
+            // Brief pause to avoid interruption
+            if (wasPlaying) {
+                await audioElement.pause();
+            }
+
+            // Update source
+            audioElement.src = url;
+            if (oldSrc) {
+                setTimeout(() => URL.revokeObjectURL(oldSrc), 1000);
+            }
+
+            // Restore playback state
+            if (wasPlaying || isFirstPlay) {
+                try {
+                    // Ensure audio is loaded before playing
+                    await new Promise((resolve) => {
+                        audioElement.addEventListener('loadedmetadata', resolve, { once: true });
+                    });
+
+                    await audioElement.play();
+
+                    // Restore position if we were already playing
+                    if (currentTime > 0 && !isFirstPlay) {
+                        audioElement.currentTime = currentTime;
+                    }
+                } catch (playError) {
+                    console.warn('Playback restoration failed:', playError);
+                }
+            }
         }
 
     } catch (error) {
@@ -404,53 +459,15 @@ async function processAudioChunk(base64Data) {
     }
 }
 
-function updateAudioSource(isFirst) {
-    if (!audioElement) return;
-
-    const currentTime = audioElement.currentTime;
-    const wasPlaying = !audioElement.paused;
-
-    // Create WAV header and concatenate all chunks
-    const wavHeader = createWavHeader(audioChunks);
-    const chunks = [wavHeader, ...audioChunks];
-
-    const audioBlob = new Blob(chunks, { type: 'audio/wav' });
-
-    // Clean up old audio URL
-    if (audioElement.src) {
-        URL.revokeObjectURL(audioElement.src);
-    }
-
-    const audioUrl = URL.createObjectURL(audioBlob);
-    audioElement.src = audioUrl;
-
-    // Restore playback state
-    if (!isFirst) {
-        audioElement.currentTime = currentTime;
-    }
-
-    // Always try to play for first chunk or if it was already playing
-    if (isFirst || wasPlaying) {
-        const playPromise = audioElement.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                // Add one-time event listener for user interaction
-                const playHandler = () => {
-                    audioElement.play()
-                        .catch(e => console.error('Delayed autoplay failed:', e));
-                    document.removeEventListener('click', playHandler);
-                };
-                document.addEventListener('click', playHandler);
-            });
-        }
-    }
-}
-
 // Helper function to create WAV header
-function createWavHeader(chunks) {
-    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+function createWavHeader(dataLength) {
     const header = new ArrayBuffer(44);
     const view = new DataView(header);
+
+    // If dataLength is an array of chunks, sum their lengths
+    const totalLength = Array.isArray(dataLength)
+        ? dataLength.reduce((acc, chunk) => acc + chunk.length, 0)
+        : dataLength;
 
     // "RIFF" chunk descriptor
     view.setUint32(0, 0x52494646, false); // "RIFF"
@@ -462,9 +479,9 @@ function createWavHeader(chunks) {
     view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
     view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
     view.setUint16(22, 1, true); // NumChannels (1 for mono)
-    view.setUint32(24, OPENAI_SAMPLE_RATE, true); // SampleRate (24kHz)
-    view.setUint32(28, OPENAI_SAMPLE_RATE * 2, true); // ByteRate (sampleRate * blockAlign)
-    view.setUint16(32, 2, true); // BlockAlign (channels * bitsPerSample/8)
+    view.setUint32(24, OPENAI_SAMPLE_RATE, true); // SampleRate
+    view.setUint32(28, OPENAI_SAMPLE_RATE * 2, true); // ByteRate
+    view.setUint16(32, 2, true); // BlockAlign
     view.setUint16(34, 16, true); // BitsPerSample
 
     // "data" sub-chunk
@@ -598,14 +615,25 @@ htmx.on('htmx:wsAfterMessage', async function (evt) {
 
         if (parsedMessage.type === 'response.created') {
             // Reset audio state for new response
-            isFirstChunk = true;  // Force first chunk handling
-            audioChunks = [];     // Clear existing chunks
+            isFirstChunk = true;
+            audioChunks = [];
+            isAudioStreamComplete = false;  // Reset completion flag
 
             // Reset the stream player and audio element
             if (streamPlayer) {
                 await streamPlayer.reset();
             }
-            return;  // Return here to ensure clean state before processing new audio
+            return;
+        }
+
+        // Handle audio completion event
+        if (parsedMessage.type === 'response.audio.done') {
+            isAudioStreamComplete = true;
+            // Force final update of audio player
+            if (audioChunks.length > 0) {
+                await processAudioChunk(''); // Empty chunk to trigger final update
+            }
+            return;
         }
 
         // Handle audio messages
@@ -665,6 +693,7 @@ htmx.on('htmx:beforeRequest', async function (evt) {
                 } catch (cleanupError) {
                     console.error('Error during cleanup:', cleanupError);
                 }
+
             }
             evt.preventDefault();
         }

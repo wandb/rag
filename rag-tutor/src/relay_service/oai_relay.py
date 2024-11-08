@@ -162,6 +162,7 @@ class OpenAIRealtimeClient:
                             | ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE
                             | ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DELTA
                             | ServerEventTypes.RESPONSE_AUDIO_DELTA
+                            | ServerEventTypes.RESPONSE_AUDIO_DONE
                             | ServerEventTypes.RESPONSE_DONE
                             | ServerEventTypes.ERROR
                         ):

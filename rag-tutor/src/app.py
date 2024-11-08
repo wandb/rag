@@ -348,6 +348,20 @@ class OpenAIMessageHandler:
                     )
                     await send(audio_message)
 
+            case ServerEventTypes.RESPONSE_AUDIO_DONE:
+                # Relay the audio completion event to the client
+                await send(
+                    json.dumps(
+                        {
+                            "type": "response.audio.done",
+                            "response_id": parsed_event.response_id,
+                        }
+                    )
+                )
+                await send_event_log(
+                    send, "Audio Complete", f"Response ID: {parsed_event.response_id}"
+                )
+
             case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
                 await send_event_log(
                     send,
