@@ -64,7 +64,6 @@ async function startRecording() {
 
         await recorder.record();
         isRecording = true;
-        // console.log('Recording started');
     } catch (error) {
         console.error('Start recording error:', error);
         // Clean up on error
@@ -83,7 +82,6 @@ async function startRecording() {
 
 async function stopRecording() {
     if (!isRecording || isProcessing) {
-        // console.log('No active recording or processing in progress');
         return;
     }
 
@@ -91,7 +89,6 @@ async function stopRecording() {
         isProcessing = true;
 
         if (!recorder) {
-            // console.log('Recorder not initialized');
             return;
         }
 
@@ -322,7 +319,6 @@ async function initializeAudioPlayer(autoplay = true) {
             try {
                 await audioElement.play();
             } catch (e) {
-                console.log('Initial autoplay failed, waiting for user interaction');
                 const interactionEvents = ['click', 'touchstart', 'keydown'];
                 const playHandler = async () => {
                     try {
@@ -438,7 +434,6 @@ function updateAudioSource(isFirst) {
         const playPromise = audioElement.play();
         if (playPromise !== undefined) {
             playPromise.catch(error => {
-                console.log('Autoplay failed:', error);
                 // Add one-time event listener for user interaction
                 const playHandler = () => {
                     audioElement.play()
@@ -517,7 +512,6 @@ htmx.on('htmx:wsOpen', async (evt) => {
 
 // Clean up when WebSocket closes
 htmx.on('htmx:wsClose', async (evt) => {
-    // console.log('WebSocket connection closed');
     audioChunks = []; // Clear stored chunks
 
     try {
@@ -574,13 +568,6 @@ htmx.on('htmx:wsConfigSend', (evt) => {
     }
 });
 
-htmx.on('htmx:wsBeforeSend', (evt) => {
-    // console.log('Sending audio data from elt:', evt.detail.elt);
-});
-
-htmx.on('htmx:wsAfterSend', (evt) => {
-    // console.log('Audio data sent successfully from elt:', evt.detail.elt);
-});
 
 htmx.on('htmx:wsBeforeMessage', async function (evt) {
     const message = evt.detail.message;
@@ -767,10 +754,6 @@ function setupTextInputHandlers() {
 
 // Update the existing htmx:afterSwap handler
 htmx.on('htmx:afterSwap', function (evt) {
-    const pttButton = document.getElementById('ptt-btn');
-    if (pttButton) {
-        // console.log('Button swapped, new disabled state:', pttButton.disabled);
-    }
 
     // Restore voice selection if available
     const voiceSelector = document.getElementById('voice-selector');
