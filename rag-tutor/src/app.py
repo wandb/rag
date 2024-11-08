@@ -5,10 +5,13 @@ from datetime import datetime
 from fasthtml.common import *
 from pydub import AudioSegment
 
-from src.components.models import (
-    ClientEventTypes, ConversationItem, ConversationItemContent, ConversationItemCreate, InputAudioBufferAppend,
-    InputAudioBufferCommit, ResponseCreate, ServerEvent, ServerEventTypes)
-from src.components.oai_relay import OpenAIRealtimeClient
+from src.relay_service.models import (
+    ClientEventTypes,
+    ServerEvent,
+    ServerEventTypes,
+)
+from src.relay_service.models import client_events
+from src.relay_service.oai_relay import OpenAIRealtimeClient
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
@@ -255,7 +258,7 @@ async def send_event_log(send, event_type: str, event_data: str):
 
 
 async def send_conversation_message(
-    send, speaker: str, message: str, is_error: bool = False
+    send, item_id: str, speaker: str, message: str = "", is_error: bool = False
 ):
     """Utility function to send conversation updates via HTMX"""
     await send(
@@ -263,11 +266,27 @@ async def send_conversation_message(
             Div(
                 Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
                 Span(speaker, cls="event-type"),
-                Span(message, cls=f"event-data{'error' if is_error else ''}"),
+                Div(
+                    message, cls=f"event-data{' error' if is_error else ''}", id=item_id
+                ),
                 cls="event-item",
             ),
             cls="conversation-content",
             id="conversation-content",
+            hx_swap_oob="beforeend",
+        )
+    )
+
+
+async def update_conversation_message(
+    send, item_id: str, delta: str, is_error: bool = False
+):
+    """Utility function to update conversation message with deltas via HTMX"""
+    await send(
+        Div(
+            delta,
+            cls=f"event-data{' error' if is_error else ''}",
+            id=item_id,
             hx_swap_oob="beforeend",
         )
     )
@@ -311,12 +330,13 @@ class OpenAIMessageHandler:
                 )
 
             case ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED:
-                await send_conversation_message(send, "User", parsed_event.transcript)
+                await send_conversation_message(
+                    send, parsed_event.item_id, "User", parsed_event.transcript
+                )
 
             case ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE:
-                await send_conversation_message(
-                    send, "Assistant", parsed_event.transcript
-                )
+                # Reset the flag for the next message
+                self.assistant_message_created = False
 
             case ServerEventTypes.RESPONSE_AUDIO_DELTA:
                 if parsed_event.delta is not None:
@@ -328,9 +348,36 @@ class OpenAIMessageHandler:
                     )
                     await send(audio_message)
 
+            case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
+                await send_event_log(
+                    send,
+                    "Function Call",
+                    f"Function call completed: {parsed_event.arguments}",
+                )
+
             case ServerEventTypes.ERROR:
                 await send_conversation_message(
-                    send, "Error", str(parsed_event.error), is_error=True
+                    send,
+                    parsed_event.item_id,
+                    "Error",
+                    str(parsed_event.error),
+                    is_error=True,
+                )
+
+            case ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DELTA:
+                # Check if the message item already exists, if not, create it
+                if (
+                    not hasattr(self, "assistant_message_created")
+                    or not self.assistant_message_created
+                ):
+                    await send_conversation_message(
+                        send, parsed_event.item_id, "Assistant", ""
+                    )
+                    self.assistant_message_created = True
+                    print(f"Creating new assistant message for {parsed_event.item_id=}")
+                print(f"Processing delta for {parsed_event.item_id=}")
+                await update_conversation_message(
+                    send, parsed_event.item_id, parsed_event.delta
                 )
 
     async def on_connect(self, send):
@@ -358,7 +405,6 @@ class OpenAIMessageHandler:
             audio_data: Base64 encoded WAV data
             metadata: Audio metadata containing sampleRate and duration
         """
-        print("Received audio data")
 
         # Decode base64 WAV data
         wav_data = base64.b64decode(audio_data)
@@ -373,7 +419,7 @@ class OpenAIMessageHandler:
         pcm_base64 = base64.b64encode(pcm_audio).decode()
 
         # Create the audio buffer append event
-        audio_event = InputAudioBufferAppend(
+        audio_event = client_events.InputAudioBufferAppend(
             type=ClientEventTypes.INPUT_AUDIO_BUFFER_APPEND, audio=pcm_base64
         )
 
@@ -381,41 +427,41 @@ class OpenAIMessageHandler:
         await self.openai_client.send(audio_event.model_dump_json(exclude_none=True))
 
         # Send commit event
-        commit_event = InputAudioBufferCommit(
+        commit_event = client_events.InputAudioBufferCommit(
             type=ClientEventTypes.INPUT_AUDIO_BUFFER_COMMIT
         )
         await self.openai_client.send(commit_event.model_dump_json(exclude_none=True))
 
     async def process_user_text(self, send, text_data: str) -> None:
         """Process text input and send it to OpenAI client"""
-        print(f"Received text data: {text_data}")
-
         # Create content for the conversation item
-        content = ConversationItemContent(type="input_text", text=text_data)
+        content = client_events.ConversationItemContent(
+            type="input_text", text=text_data
+        )
 
         # Create the conversation item
-        conversation_item = ConversationItem(
+        conversation_item = client_events.ConversationItem(
             type="message", role="user", content=[content]
         )
 
         # Create the conversation item create event
-        create_event = ConversationItemCreate(
+        create_event = client_events.ConversationItemCreate(
             type=ClientEventTypes.CONVERSATION_ITEM_CREATE, item=conversation_item
         )
-
         # Send the event to OpenAI
         await self.openai_client.send(create_event.model_dump_json(exclude_none=True))
 
         # Create and send response create event to get the assistant's response
-        response_event = ResponseCreate(type=ClientEventTypes.RESPONSE_CREATE)
+        response_event = client_events.ResponseCreate(
+            type=ClientEventTypes.RESPONSE_CREATE
+        )
         await self.openai_client.send(response_event.model_dump_json(exclude_none=True))
 
-        await send_conversation_message(send, "User", text_data)
+        await send_conversation_message(send, "1", "User", text_data)
 
     async def process_message(self, data: dict, send) -> None:
         """Process incoming WebSocket messages"""
         msg_type = data.get("type")
-        print(f"Received message: {msg_type}")
 
         match msg_type:
             case "voice_config":
