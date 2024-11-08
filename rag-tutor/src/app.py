@@ -370,13 +370,7 @@ class OpenAIMessageHandler:
                 )
 
             case ServerEventTypes.ERROR:
-                await send_conversation_message(
-                    send,
-                    parsed_event.item_id,
-                    "Error",
-                    str(parsed_event.error),
-                    is_error=True,
-                )
+                await send_event_log(send, "Error", str(parsed_event.error.message))
 
             case ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DELTA:
                 # Check if the message item already exists, if not, create it

@@ -733,8 +733,7 @@ htmx.on('htmx:beforeRequest', async function (evt) {
     }
 });
 
-// Add these functions at the top level
-function handleTextSend() {
+async function handleTextSend() {
     const sendButton = document.getElementById('send-btn');
     const textInput = document.getElementById('text-input');
 
@@ -742,6 +741,23 @@ function handleTextSend() {
         const wsContainer = document.getElementById('ws-container');
 
         if (wsContainer) {
+            // First send cancel event if audio is playing
+            if (streamPlayer && streamPlayer.audioElement && !streamPlayer.audioElement.paused) {
+                const cancelEventDetail = {
+                    type: 'cancel',
+                    data: 'Cancel current audio stream'
+                };
+                const cancelEvent = new CustomEvent('audioMessage', {
+                    bubbles: true,
+                    detail: cancelEventDetail
+                });
+                wsContainer.dispatchEvent(cancelEvent);
+
+                // Wait for audio to stop
+                await streamPlayer.reset();
+            }
+
+            // Then send the text message
             const eventDetail = {
                 type: 'text',
                 data: textInput.value.trim()
