@@ -455,7 +455,7 @@ class OpenAIMessageHandler:
     async def process_user_text(self, send, text_data: str) -> None:
         """Process text input and send it to OpenAI client"""
         # Create content for the conversation item
-        content = client_events.ConversationItemContent(
+        content = client_events.MessageContent(  # Changed from ConversationItemContent
             type="input_text", text=text_data
         )
 
@@ -468,6 +468,7 @@ class OpenAIMessageHandler:
         create_event = client_events.ConversationItemCreate(
             type=ClientEventTypes.CONVERSATION_ITEM_CREATE, item=conversation_item
         )
+
         # Send the event to OpenAI
         await self.openai_client.send(create_event.model_dump_json(exclude_none=True))
 

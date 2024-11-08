@@ -5,18 +5,12 @@ import os
 import websockets
 from pydantic import ValidationError
 
+from src.pipeline.docstore import HybridRetriever
 from src.relay_service.models import (
-    EVENT_TYPE_TO_MODEL,
+    server_events,
+    client_events,
     ClientEventTypes,
-    InputAudioTranscription,
-    ResponseCreate,
-    ServerEvent,
     ServerEventTypes,
-    Session,
-    SessionUpdate,
-    Tool,
-    ToolParameter,
-    ToolParameterProperty,
 )
 
 SYSTEM_PROMPT = """You are a professional interactive personal tutor and an expert at explaining topics related to building LLM applications. Your task is to educate users about this subject using provided and retrieved information.
@@ -64,15 +58,15 @@ Offer a short greeting and overview, engage actively with users, and build conve
 - Always stay within your role as a tutor specializing in RAG and LLM applications.
 - Only use the information provided or retrieved through the SearchRetrieve function."""
 
-SEARCH_RETRIEVE_TOOL = Tool(
+SEARCH_RETRIEVE_TOOL = client_events.Tool(
     type="function",
     name="SearchRetrieve",
     description="A tool to search for relevant information from a knowledge engine",
-    parameters=ToolParameter(
+    parameters=client_events.ToolParameter(
         type="object",
         properties={
-            "query": ToolParameterProperty(type="string"),
-            "limit": ToolParameterProperty(type="integer"),
+            "query": client_events.ToolParameterProperty(type="string"),
+            "limit": client_events.ToolParameterProperty(type="integer"),
         },
         required=["query"],
     ),
@@ -87,7 +81,8 @@ class OpenAIRealtimeClient:
         )
         self.task = None
         self.message_callback = message_callback
-        self.function_call_buffers = {}  # Add this to store function call deltas
+        self.function_call_buffers = {}
+        self.retriever = HybridRetriever.load()
 
     async def connect(self):
         """Establish WebSocket connection"""
@@ -102,11 +97,13 @@ class OpenAIRealtimeClient:
 
     async def configure_session(self, voice=None):
         """Configure the session with optional voice setting"""
-        config_event = SessionUpdate(
-            session=Session(
+        config_event = client_events.SessionUpdate(
+            session=client_events.Session(
                 modalities=["text", "audio"],
                 instructions=SYSTEM_PROMPT,
-                input_audio_transcription=InputAudioTranscription(model="whisper-1"),
+                input_audio_transcription=client_events.InputAudioTranscription(
+                    model="whisper-1"
+                ),
                 turn_detection=None,
                 voice=voice,  # Add voice to session configuration
                 tools=[SEARCH_RETRIEVE_TOOL],
@@ -143,13 +140,73 @@ class OpenAIRealtimeClient:
         if self.ws:
             await self.ws.send(data)
 
+    async def handle_function_call(
+        self, function_name: str, arguments: str, call_id: str
+    ):
+        """Handle function calls from the LLM"""
+        try:
+            args = json.loads(arguments)
+            if function_name == "SearchRetrieve":
+                results = await self.retriever.invoke(
+                    query=args.get("query"), limit=args.get("limit", 5)
+                )
+                formatted_response = "\n---\n".join([doc.as_str for doc in results])
+
+                # Create the function call output item
+                function_output_item = client_events.ConversationItem(
+                    type="function_call_output",
+                    call_id=call_id,  # Link to the original function call
+                    output=formatted_response,
+                )
+
+                # Create and send the conversation item create event
+                create_event = client_events.ConversationItemCreate(
+                    type=ClientEventTypes.CONVERSATION_ITEM_CREATE,
+                    item=function_output_item,
+                )
+
+                # Send the function output
+                await self.send(create_event.model_dump_json(exclude_none=True))
+
+                # Create and send response create event to get the assistant's response
+                response_event = client_events.ResponseCreate(
+                    type=ClientEventTypes.RESPONSE_CREATE
+                )
+                await self.send(response_event.model_dump_json(exclude_none=True))
+
+                return formatted_response
+
+        except Exception as e:
+            print(f"Error in function call: {e}")
+            error_msg = f"Error executing function: {str(e)}"
+
+            # error_output_item = client_events.ConversationItem(
+            #     type="function_call_output",
+            #     call_id=call_id,  # Link to the original function call
+            #     output=error_msg,
+            # )
+            #
+            # error_event = client_events.ConversationItemCreate(
+            #     type=ClientEventTypes.CONVERSATION_ITEM_CREATE,
+            #     item=error_output_item,
+            # )
+            #
+            # await self.send(error_event.model_dump_json(exclude_none=True))
+            #
+            # # Even in case of error, we should trigger the assistant's response
+            # response_event = client_events.ResponseCreate(
+            #     type=ClientEventTypes.RESPONSE_CREATE
+            # )
+            # await self.send(response_event.model_dump_json(exclude_none=True))
+
+            return error_msg
+
     async def receive_messages(self):
         """Receive and process WebSocket messages"""
         try:
             async for message in self.ws:
                 try:
                     message_data = json.loads(message)
-                    # print(f"Received message type: {message_data['type']}")
                     parsed_event = parse_server_event(message_data)
 
                     match parsed_event.type:
@@ -172,7 +229,7 @@ class OpenAIRealtimeClient:
                         case (
                             ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
                         ):
-                            response_event = ResponseCreate(
+                            response_event = client_events.ResponseCreate(
                                 type=ClientEventTypes.RESPONSE_CREATE
                             )
                             await self.send(
@@ -191,16 +248,29 @@ class OpenAIRealtimeClient:
                             self.function_call_buffers[buffer_key] += parsed_event.delta
 
                         case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
-                            # Get accumulated delta and clear buffer
                             buffer_key = (
                                 f"{parsed_event.response_id}:{parsed_event.call_id}"
                             )
                             accumulated_json = self.function_call_buffers.pop(
                                 buffer_key, ""
                             )
+                            # print(f"Function call arguments: {accumulated_json}")
 
-                            # Print accumulated JSON for debugging
-                            print(f"Function call arguments: {accumulated_json}")
+                            # Get the function name from the message data
+                            function_name = message_data.get("name")
+                            if not function_name:
+                                # print("Warning: No function name found in message data")
+                                return
+
+                            # Execute function and get response
+                            function_response = await self.handle_function_call(
+                                function_name,
+                                parsed_event.arguments,
+                                parsed_event.call_id,
+                            )
+                            print(
+                                f"Function response: {function_response[:100]} ... {function_response[-100:]}"
+                            )
 
                             if self.message_callback:
                                 await self.message_callback(parsed_event)
@@ -215,12 +285,12 @@ class OpenAIRealtimeClient:
             print(f"Error receiving message: {e}")
 
 
-def parse_server_event(event_data: dict) -> ServerEvent:
+def parse_server_event(event_data: dict) -> server_events.ServerEvent:
     event_type = event_data.get("type")
     if not event_type:
         raise ValueError("Event data is missing 'type' field")
 
-    model_class = EVENT_TYPE_TO_MODEL.get(event_type)
+    model_class = server_events.EVENT_TYPE_TO_MODEL.get(event_type)
     if not model_class:
         raise ValueError(f"Unknown event type: {event_type}")
 

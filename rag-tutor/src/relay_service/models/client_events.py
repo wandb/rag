@@ -73,35 +73,22 @@ class InputAudioBufferClear(BaseEvent):
 
 
 class MessageContent(BaseModel):
-    type: Literal["input_audio"]
-    audio: str
+    """Content for message-type items only"""
 
-
-class ConversationItemContent(BaseModel):
-    type: Literal["input_text", "input_audio", "text", "audio"]
+    type: Literal["input_text", "input_audio", "text"]
     text: Optional[str] = None
     audio: Optional[str] = None
     transcript: Optional[str] = None
 
 
-class FunctionCallContent(BaseModel):
-    call_id: str
-    name: str
-    arguments: str
-
-
-class FunctionCallOutputContent(BaseModel):
-    output: str
-
-
 class ConversationItem(BaseModel):
+    """Represents an item in the conversation"""
+
     id: Optional[str] = None
     type: Literal["message", "function_call", "function_call_output"]
-    status: Optional[Literal["completed", "in_progress", "incomplete"]] = None
-    role: Literal["user", "assistant", "system"]
-    content: List[
-        Union[ConversationItemContent, FunctionCallContent, FunctionCallOutputContent]
-    ]
+    status: Optional[Literal["completed", "incomplete"]] = None
+    role: Optional[Literal["user", "assistant", "system"]] = None
+    content: Optional[List[MessageContent]] = None
     call_id: Optional[str] = None
     name: Optional[str] = None
     arguments: Optional[str] = None
@@ -112,6 +99,7 @@ class ConversationItemCreate(BaseEvent):
     type: Literal[ClientEventTypes.CONVERSATION_ITEM_CREATE] = (
         ClientEventTypes.CONVERSATION_ITEM_CREATE
     )
+    previous_item_id: Optional[str] = None
     item: ConversationItem
 
 
