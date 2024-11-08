@@ -35,13 +35,18 @@ export class WavStreamPlayer {
       await this.context.resume();
     }
 
-    // Create and configure analyzer with better settings for visualization
+    // Create and configure analyzer
     const analyser = this.context.createAnalyser();
-    analyser.fftSize = 2048; // Reduced for better performance
-    analyser.smoothingTimeConstant = 0.8; // Increased for smoother visualization
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.8;
     analyser.minDecibels = -90;
     analyser.maxDecibels = -10;
     this.analyser = analyser;
+
+    // Create initial MediaElementSource connection
+    this.sourceNode = this.context.createMediaElementSource(audioElement);
+    this.sourceNode.connect(this.analyser);
+    this.sourceNode.connect(this.context.destination);
 
     // Create a MediaStream from the audio context
     const dest = this.context.createMediaStreamDestination();
@@ -53,23 +58,23 @@ export class WavStreamPlayer {
       throw new Error(`Could not add audioWorklet module: ${this.scriptSrc}`);
     }
 
-    // Set up MediaRecorder to capture the audio stream
+    // Set up MediaRecorder
     this.mediaRecorder = new MediaRecorder(dest.stream);
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         const url = URL.createObjectURL(event.data);
-        this.audioElement.src = url;
         // Clean up the old URL
         const oldUrl = this.audioElement.dataset.blobUrl;
         if (oldUrl) {
           URL.revokeObjectURL(oldUrl);
         }
+        this.audioElement.src = url;
         this.audioElement.dataset.blobUrl = url;
       }
     };
 
     // Start recording
-    this.mediaRecorder.start(100); // Update every 100ms
+    this.mediaRecorder.start(100);
     return true;
   }
 
@@ -210,40 +215,41 @@ export class WavStreamPlayer {
     this.trackSampleOffsets = {};
     this.interruptedTrackIds = {};
 
-    // Clean up old blob URL
+    // Clean up old blob URL and reset audio element
     if (this.audioElement) {
       const oldUrl = this.audioElement.dataset.blobUrl;
       if (oldUrl) {
         URL.revokeObjectURL(oldUrl);
         delete this.audioElement.dataset.blobUrl;
       }
+
+      // Fully reset the audio element
+      this.audioElement.pause();
+      this.audioElement.currentTime = 0;
       this.audioElement.src = '';
+      this.audioElement.load();  // Force browser to clear buffer
     }
 
-    // Create new MediaRecorder
+    // Create new MediaRecorder with fresh stream
     const dest = this.context.createMediaStreamDestination();
     this.mediaRecorder = new MediaRecorder(dest.stream);
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         const url = URL.createObjectURL(event.data);
-        this.audioElement.src = url;
-        // Clean up the old URL
-        const oldUrl = this.audioElement.dataset.blobUrl;
-        if (oldUrl) {
-          URL.revokeObjectURL(oldUrl);
+        if (this.audioElement) {
+          // Clean up old URL before setting new one
+          const oldUrl = this.audioElement.dataset.blobUrl;
+          if (oldUrl) {
+            URL.revokeObjectURL(oldUrl);
+          }
+          this.audioElement.src = url;
+          this.audioElement.dataset.blobUrl = url;
         }
-        this.audioElement.dataset.blobUrl = url;
       }
     };
 
-    // Start recording
+    // Start recording with smaller time slice for more responsive updates
     this.mediaRecorder.start(100);
-
-    // Ensure the audio element is reset
-    if (this.audioElement) {
-      this.audioElement.currentTime = 0;
-      this.audioElement.pause();
-    }
   }
 }
 

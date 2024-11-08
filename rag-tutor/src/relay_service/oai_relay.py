@@ -158,6 +158,7 @@ class OpenAIRealtimeClient:
                             | ServerEventTypes.SESSION_UPDATED
                             | ServerEventTypes.CONVERSATION_CREATED
                             | ServerEventTypes.CONVERSATION_ITEM_CREATED
+                            | ServerEventTypes.RESPONSE_CREATED
                             | ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DONE
                             | ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DELTA
                             | ServerEventTypes.RESPONSE_AUDIO_DELTA

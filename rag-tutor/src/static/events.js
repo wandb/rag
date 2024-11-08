@@ -586,15 +586,7 @@ htmx.on('htmx:wsBeforeMessage', async function (evt) {
     const message = evt.detail.message;
 
     try {
-        // Try to parse the message if it's a string
         const parsedMessage = typeof message === 'string' ? JSON.parse(message) : message;
-
-        // Handle audio messages
-        if (parsedMessage.type === 'audio') {
-            evt.preventDefault(); // Prevent default HTMX processing
-            await processAudioChunk(parsedMessage.data);
-            return;
-        }
 
         // If it's an HTML update with hx-swap-oob="beforeend"
         if (typeof message === 'string' && message.includes('hx-swap-oob="beforeend"')) {
@@ -611,13 +603,23 @@ htmx.on('htmx:wsBeforeMessage', async function (evt) {
     // Let HTMX handle non-audio messages for DOM updates
 });
 
-// Update the htmx:wsAfterMessage handler
 htmx.on('htmx:wsAfterMessage', async function (evt) {
     const message = evt.detail.message;
 
     try {
-        // Try to parse the message if it's a string
         const parsedMessage = typeof message === 'string' ? JSON.parse(message) : message;
+
+        if (parsedMessage.type === 'response.created') {
+            // Reset audio state for new response
+            isFirstChunk = true;  // Force first chunk handling
+            audioChunks = [];     // Clear existing chunks
+
+            // Reset the stream player and audio element
+            if (streamPlayer) {
+                await streamPlayer.reset();
+            }
+            return;  // Return here to ensure clean state before processing new audio
+        }
 
         // Handle audio messages
         if (parsedMessage.type === 'audio') {
@@ -717,23 +719,17 @@ htmx.on('htmx:beforeRequest', async function (evt) {
 
 // Add these functions at the top level
 function handleTextSend() {
-    console.log('handleTextSend called');
     const sendButton = document.getElementById('send-btn');
     const textInput = document.getElementById('text-input');
-    console.log('sendButton:', sendButton);
-    console.log('textInput:', textInput);
-    console.log('textInput value:', textInput?.value);
 
     if (sendButton && textInput && !sendButton.disabled && textInput.value.trim()) {
         const wsContainer = document.getElementById('ws-container');
-        console.log('wsContainer:', wsContainer);
 
         if (wsContainer) {
             const eventDetail = {
                 type: 'text',
                 data: textInput.value.trim()
             };
-            console.log('Dispatching event with detail:', eventDetail);
 
             const textMessageEvent = new CustomEvent('textMessage', {
                 bubbles: true,
@@ -755,7 +751,6 @@ function setupTextInputHandlers() {
     if (sendButton) {
         sendButton.removeEventListener('click', handleTextSend);
         sendButton.addEventListener('click', handleTextSend);
-        console.log('Added click handler to send button');
     }
 
     if (textInput) {
@@ -767,7 +762,6 @@ function setupTextInputHandlers() {
         };
         textInput.removeEventListener('keydown', keydownHandler);
         textInput.addEventListener('keydown', keydownHandler);
-        console.log('Added keydown handler to text input');
     }
 }
 

@@ -374,10 +374,22 @@ class OpenAIMessageHandler:
                         send, parsed_event.item_id, "Assistant", ""
                     )
                     self.assistant_message_created = True
-                    print(f"Creating new assistant message for {parsed_event.item_id=}")
-                print(f"Processing delta for {parsed_event.item_id=}")
                 await update_conversation_message(
                     send, parsed_event.item_id, parsed_event.delta
+                )
+
+            case ServerEventTypes.RESPONSE_CREATED:
+                # Relay the response.created event to the client
+                await send(
+                    json.dumps(
+                        {
+                            "type": "response.created",
+                            "response_id": parsed_event.response.id,
+                        }
+                    )
+                )
+                await send_event_log(
+                    send, "Response Created", f"Response ID: {parsed_event.response.id}"
                 )
 
     async def on_connect(self, send):
