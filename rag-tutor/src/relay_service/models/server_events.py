@@ -49,9 +49,9 @@ class ConversationItemContent(BaseModel):
 
 
 class ConversationItem(BaseModel):
-    id: Optional[str]
-    type: Literal["message", "function_call", "function_call_output"]
-    role: Literal["user", "assistant", "system"]
+    id: str
+    type: Optional[Literal["message", "function_call", "function_call_output"]] = None
+    role: Optional[Literal["user", "assistant", "system"]] = None
     content: Optional[List[ConversationItemContent]] = None
     call_id: Optional[str] = None
     name: Optional[str] = None
@@ -373,6 +373,8 @@ ServerEvent = Union[
     ConversationItemTruncated,
     ConversationItemDeleted,
     RateLimitsUpdated,
+    ResponseFunctionCallArgumentsDelta,
+    ResponseFunctionCallArgumentsDone,
 ]
 
 
@@ -403,4 +405,6 @@ EVENT_TYPE_TO_MODEL = {
     ServerEventTypes.RESPONSE_TEXT_DONE: ResponseTextDone,
     ServerEventTypes.RESPONSE_AUDIO_DONE: ResponseAudioDone,
     ServerEventTypes.RATE_LIMITS_UPDATED: RateLimitsUpdated,
+    ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DELTA: ResponseFunctionCallArgumentsDelta,
+    ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE: ResponseFunctionCallArgumentsDone,
 }
