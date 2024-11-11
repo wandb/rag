@@ -1,4 +1,4 @@
-import { AudioAnalysis } from './analysis/audio_analysis.js';
+import {AudioAnalysis} from './audio_analysis.js';
 
 /**
  * Plays audio streams received in raw PCM16 chunks from the browser

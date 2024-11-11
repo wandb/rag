@@ -1,6 +1,6 @@
-import { AudioProcessorSrc } from './worklets/audio_processor.js';
-import { AudioAnalysis } from './analysis/audio_analysis.js';
-import { WavPacker } from './wav_packer.js';
+import {AudioProcessorSrc} from './audio_processor.js';
+import {AudioAnalysis} from './audio_analysis.js';
+import {WavPacker} from './wav_packer.js';
 
 /**
  * Decodes audio into a wav file
@@ -385,7 +385,7 @@ export class WavRecorder {
    * @param {"frequency"|"music"|"voice"} [analysisType]
    * @param {number} [minDecibels] default -100
    * @param {number} [maxDecibels] default -30
-   * @returns {import('./analysis/audio_analysis.js').AudioAnalysisOutputType}
+   * @returns {import('./audio_analysis.js').AudioAnalysisOutputType}
    */
   getFrequencies(
     analysisType = 'frequency',

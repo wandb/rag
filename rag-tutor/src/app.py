@@ -16,7 +16,7 @@ from src.relay_service.oai_relay import OpenAIRealtimeClient
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
 tlink = Script(src="https://cdn.tailwindcss.com")
-custom_style = StyleX(fname=f"{static_dir}/style.css")
+custom_style = StyleX(fname=f"{static_dir}/css/style.css")
 
 dlink = Link(
     rel="stylesheet",
@@ -50,7 +50,7 @@ app, rt = fast_app(
         fonts,
         Script(src="https://unpkg.com/audiomotion-analyzer@4.5.0/dist/index.js"),
         Script(src="/static/wavtools/index.js", type="module"),
-        Script(src="/static/events.js", type="module"),
+        Script(src="/static/modules/events.js", type="module"),
     ),
 )
 
