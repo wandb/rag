@@ -143,7 +143,8 @@ class ResponseContentPart(BaseModel):
 
 class ResponseStatusDetails(BaseModel):
     type: str
-    reason: str
+    reason: Optional[str] = None
+    error: Optional[str] = None
 
 
 class Response(BaseModel):

@@ -311,6 +311,7 @@ class OpenAIMessageHandler:
                 )
 
             case ServerEventTypes.SESSION_UPDATED:
+                print(f"Session Updated: {parsed_event.model_dump_json(indent=2)}")
                 await send_event_log(
                     send, "Session Updated", f"Session ID: {parsed_event.event_id}"
                 )
