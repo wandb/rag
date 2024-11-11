@@ -48,8 +48,9 @@ app, rt = fast_app(
         leaflet_js,
         htmx_ws,
         fonts,
+        Script(src="https://unpkg.com/audiomotion-analyzer@4.5.0/dist/index.js"),
         Script(src="/static/wavtools/index.js", type="module"),
-        Script(src="/static/events.js", type="text/javascript"),
+        Script(src="/static/events.js", type="module"),
     ),
 )
 
@@ -311,7 +312,6 @@ class OpenAIMessageHandler:
                 )
 
             case ServerEventTypes.SESSION_UPDATED:
-                print(f"Session Updated: {parsed_event.model_dump_json(indent=2)}")
                 await send_event_log(
                     send, "Session Updated", f"Session ID: {parsed_event.event_id}"
                 )

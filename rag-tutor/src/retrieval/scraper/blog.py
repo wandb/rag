@@ -5,10 +5,14 @@ import time
 
 import httpx
 from crawl4ai import AsyncWebCrawler
-from crawl4ai.async_crawler_strategy import AsyncCrawlResponse, AsyncPlaywrightCrawlerStrategy
-from models import Document
+from crawl4ai.async_crawler_strategy import (
+    AsyncCrawlResponse,
+    AsyncPlaywrightCrawlerStrategy,
+)
 from playwright.async_api import Browser, Error, Page
-from utils import cleanup_text, html_to_md, length_fn, load_html_content
+
+from src.retrieval.models import Document
+from src.retrieval.utils import cleanup_text, html_to_md, length_fn, load_html_content
 
 readability_script_url = (
     "https://cdnjs.cloudflare.com/ajax/libs/readability/0.5.0/Readability.js"
@@ -63,9 +67,7 @@ class CSPCompliantAsyncPlaywrightCrawlerStrategy(AsyncPlaywrightCrawlerStrategy)
 
         try:
             if self.verbose:
-                print(
-                    f"[LOG] 🕸️ Crawling {url} using AsyncPlaywrightCrawlerStrategy..."
-                )
+                print(f"[LOG] 🕸️ Crawling {url} using AsyncPlaywrightCrawlerStrategy...")
 
             if self.use_cached_html:
                 cache_file_path = os.path.join(
@@ -220,7 +222,7 @@ if __name__ == "__main__":
     from tqdm import tqdm
 
     with open("data/blog_articles.jsonl", "w+") as f:
-        articles = Path("blog_sources.txt").read_text().splitlines()
+        articles = Path("data/blog_sources.txt").read_text().splitlines()
         for article in tqdm(articles, total=len(articles)):
             article = asyncio.run(load_blog_article(article.strip()))
             line = article.model_dump_json() + "\n"

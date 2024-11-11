@@ -1,17 +1,26 @@
 import fnmatch
 import io
+import json
+import os
 import tempfile
 import warnings
 import zipfile
 from pathlib import Path
 
 import httpx
-from models import Document
 from nbconvert import MarkdownExporter
 from nbformat import reads
 from nbformat.validator import normalize as nb_normalize
 from traitlets.config import Config
-from utils import cleanup_text, html_to_md, length_fn, load_html_content, md_to_html
+
+from src.retrieval.models import Document
+from src.retrieval.utils import (
+    cleanup_text,
+    html_to_md,
+    length_fn,
+    load_html_content,
+    md_to_html,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -65,6 +74,7 @@ class RepoScrapper:
         repo: str,
         content_roots: list[str] = None,
         file_types: list = None,
+        github_token: str = None,
     ):
         self.owner = owner
         self.repo = repo
@@ -73,6 +83,7 @@ class RepoScrapper:
         self.branch = None
         self.content_roots = [""] if content_roots is None else content_roots
         self.file_types = file_types if file_types else FILE_TYPES
+        self.github_token = github_token
 
     async def __aenter__(self):
         self.set_repo_url()
@@ -86,15 +97,24 @@ class RepoScrapper:
         self.repo_url = f"https://github.com/{self.owner}/{self.repo}"
 
     def set_tag_or_branch(self):
+        headers = {}
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
+
         response = httpx.get(
-            f"https://api.github.com/repos/{self.owner}/{self.repo}/releases/latest"
+            f"https://api.github.com/repos/{self.owner}/{self.repo}/releases/latest",
+            headers=headers,
+            follow_redirects=True,
         )
+        print(f"tag or branch {response=}")
         if response.status_code == 200:
             tags = response.json()
             self.tag = tags["tag_name"]
         else:
             response = httpx.get(
-                f"https://api.github.com/repos/{self.owner}/{self.repo}"
+                f"https://api.github.com/repos/{self.owner}/{self.repo}",
+                headers=headers,
+                follow_redirects=True,
             )
             if response.status_code == 200:
                 branch = response.json()["default_branch"]
@@ -114,8 +134,11 @@ class RepoScrapper:
 
     async def get_zip_data(self):
         url = self.get_zip_url()
+        headers = {}
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, follow_redirects=True)
+            response = await client.get(url, headers=headers, follow_redirects=True)
             response.raise_for_status()
             return io.BytesIO(response.content)
 
@@ -124,6 +147,9 @@ class RepoScrapper:
             zip_data = await self.get_zip_data()
             with zipfile.ZipFile(zip_data) as zip_file:
                 zip_file.extractall(temp_dir)
+
+                # Initialize gitignore_patterns as an empty list
+                gitignore_patterns = []
 
                 # Read .gitignore file if it exists
                 gitignore_path = (
@@ -202,42 +228,13 @@ class RepoScrapper:
 async def main():
     from tqdm import tqdm
 
-    repos = [
-        {
-            "owner": "openai",
-            "repo": "openai-cookbook",
-            "content_roots": ["articles", "examples"],
-        },
-        {
-            "owner": "anthropics",
-            "repo": "anthropic-cookbook",
-            "content_roots": [
-                "misc",
-                "multimodal",
-                "skills",
-                "third_party",
-                "tool_use",
-            ],
-        },
-        {"owner": "BerriAI", "repo": "litellm", "content_roots": ["cookbook"]},
-        {
-            "owner": "dair-ai",
-            "repo": "Prompt-Engineering-Guide",
-            "content_roots": ["notebooks"],
-        },
-        {"owner": "wandb", "repo": "weave", "content_roots": ["docs/notebooks"]},
-        {"owner": "wandb", "repo": "edu", "content_roots": ["rag-advanced"]},
-        {"owner": "cohere-ai", "repo": "notebooks", "content_roots": ["notebooks"]},
-        {"owner": "jxnl", "repo": "instructor", "content_roots": ["examples"]},
-        {
-            "owner": "NirDiamant",
-            "repo": "RAG_Techniques",
-            "content_roots": ["all_rag_techniques", "evaluation"],
-        },
-    ]
+    repos = open("data/repos.jsonl").readlines()
+    repos = list(map(json.loads, repos))
     with open("data/cookbook_docs.jsonl", "w+") as f:
         for repo in tqdm(repos):
-            async with RepoScrapper(**repo) as scrapper:
+            async with RepoScrapper(
+                github_token=os.getenv("GITHUB_TOKEN"), **repo
+            ) as scrapper:
                 docs = await scrapper.arun()
                 for doc in docs:
                     line = doc.model_dump_json() + "\n"

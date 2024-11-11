@@ -139,6 +139,7 @@ https://hamel.dev/notes/video_editing.html
 https://hamel.dev/notes/web-scraping/browser-to-python.html
 https://hamel.dev/notes/web-scraping/index.html
 https://hamel.dev/notes/web-scraping/transcribe-diarize.html
+https://hamel.dev/blog/posts/llm-judge/index.html
 https://huyenchip.com/2023/04/11/llm-engineering.html
 https://huyenchip.com/2023/05/02/rlhf.html
 https://huyenchip.com/2023/06/07/generative-ai-strategy.html
@@ -417,3 +418,7 @@ https://www.promptingguide.ai/techniques/tot
 https://www.promptingguide.ai/techniques/zeroshot
 https://wandb.ai/cosmo3769/RAG/reports/A-Gentle-Introduction-to-Retrieval-Augmented-Generation-RAG---Vmlldzo1MjM4Mjk1
 https://wandb.ai/site/articles/rag-techniques/
+https://weaviate.io/blog/introduction-to-rag
+https://weaviate.io/blog/rag-evaluation
+https://weaviate.io/blog/advanced-rag
+https://weaviate.io/blog/what-is-agentic-rag

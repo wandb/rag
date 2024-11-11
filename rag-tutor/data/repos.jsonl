@@ -7,3 +7,4 @@
 {"owner": "cohere-ai", "repo": "notebooks", "content_roots": ["notebooks"]}
 {"owner": "jxnl", "repo": "instructor", "content_roots": ["examples"]}
 {"owner": "NirDiamant", "repo": "RAG_Techniques","content_roots": ["all_rag_techniques", "evaluation"]}
+{"owner":  "togethercomputer", "repo":  "together-cookbook", "content_roots": null}
