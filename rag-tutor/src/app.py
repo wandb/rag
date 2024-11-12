@@ -492,6 +492,15 @@ class OpenAIMessageHandler:
             case "cancel":
                 if hasattr(self, "current_task"):
                     self.current_task.cancel()
+
+                # Send a response.cancel event to OpenAI
+                cancel_event = client_events.ResponseCancel(
+                    type=ClientEventTypes.RESPONSE_CANCEL
+                )
+                await self.openai_client.send(
+                    cancel_event.model_dump_json(exclude_none=True)
+                )
+
                 await send_event_log(send, "Cancelled", "Audio streaming cancelled")
 
             case "audio":

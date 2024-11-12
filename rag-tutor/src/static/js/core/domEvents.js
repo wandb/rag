@@ -1,5 +1,5 @@
-import {startRecording, stopRecording} from '../modules/audio/recorder.js';
-import {audioState} from './state.js';
+import { startRecording, stopRecording } from '../modules/audio/recorder.js';
+import { audioState } from './state.js';
 
 export async function handleTextSend() {
     const sendButton = document.getElementById('send-btn');
@@ -23,6 +23,9 @@ export async function handleTextSend() {
 
                 // Wait for audio to stop
                 await audioState.streamPlayer.reset();
+                // Ensure the audio element is paused
+                audioState.audioElement.pause();
+                audioState.audioElement.currentTime = 0;
             }
 
             // Then send the text message
