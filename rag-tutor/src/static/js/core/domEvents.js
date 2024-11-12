@@ -68,8 +68,23 @@ export function setupTextInputHandlers() {
 }
 
 export function setupPTTHandlers() {
-    function handlePTTStart(pttButton) {
+    async function handlePTTStart(pttButton) {
         if (pttButton && !pttButton.disabled && !audioState.isProcessing) {
+            // Pause and reset audio playback immediately
+            if (audioState.streamPlayer) {
+                await audioState.streamPlayer.reset();
+            }
+
+            if (audioState.audioElement) {
+                audioState.audioElement.pause();
+                audioState.audioElement.currentTime = 0; // Reset to start
+                if (audioState.audioElement.src) {
+                    URL.revokeObjectURL(audioState.audioElement.src);
+                    audioState.audioElement.src = '';
+                }
+                audioState.audioElement.load();
+            }
+
             startRecording();
             pttButton.style.backgroundColor = '#ff4444';
             pttButton.style.color = 'white';
