@@ -31,7 +31,7 @@ htmx_ws = Script(src="https://unpkg.com/htmx-ext-ws@2.0.0/ws.js")
 fonts = (
     Link(
         rel="stylesheet",
-        href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap",
+        href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600&display=swap",
     ),
 )
 app, rt = fast_app(

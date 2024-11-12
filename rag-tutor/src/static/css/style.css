@@ -1,5 +1,5 @@
 body {
-    font-family: 'Roboto Mono', monospace;
+    font-family: "Source Sans 3", Sans-serif;
     font-weight: 400;
     margin: 0;
     padding: 0;
@@ -180,7 +180,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-family: 'Roboto Mono', monospace;
+    font-family: "Source Sans 3", Sans-serif;
     font-size: 12px;
     font-optical-sizing: auto;
     font-weight: 400;
