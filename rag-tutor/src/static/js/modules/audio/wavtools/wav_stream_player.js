@@ -1,4 +1,4 @@
-import { AudioAnalysis } from './audio_analysis.js';
+import {AudioAnalysis} from './audio_analysis.js';
 
 /**
  * Plays audio streams received in raw PCM16 chunks from the browser
@@ -19,7 +19,7 @@ export class WavStreamPlayer {
 
     // Create and configure analyzer
     this.analyser = this.context.createAnalyser();
-    this.analyser.fftSize = 2048;
+    this.analyser.fftSize = 8192;
     this.analyser.smoothingTimeConstant = 0.8;
     this.analyser.minDecibels = -90;
     this.analyser.maxDecibels = -10;
