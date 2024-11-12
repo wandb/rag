@@ -1,5 +1,5 @@
-import { startRecording, stopRecording } from './recorder.js';
-import { audioState } from './state.js';
+import {startRecording, stopRecording} from '../modules/audio/recorder.js';
+import {audioState} from './state.js';
 
 export async function handleTextSend() {
     const sendButton = document.getElementById('send-btn');

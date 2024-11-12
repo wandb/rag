@@ -49,8 +49,7 @@ app, rt = fast_app(
         htmx_ws,
         fonts,
         Script(src="https://unpkg.com/audiomotion-analyzer@4.5.0/dist/index.js"),
-        Script(src="/static/wavtools/index.js", type="module"),
-        Script(src="/static/modules/events.js", type="module"),
+        Script(src="/static/js/index.js", type="module"),
     ),
 )
 
@@ -234,10 +233,7 @@ def post():
     return create_layout(
         button_text="connect",
         audio_player_disabled=True,
-        ws_props={
-            "hx_ext": "ws",
-            "hx_swap_oob": "true",
-        },
+        ws_props={"hx_swap_oob": "true", "hx_swap": "delete"},
     )
 
 

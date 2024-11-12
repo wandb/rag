@@ -1,5 +1,5 @@
-import { createWavHeader } from './utils.js';
-import { audioState } from './state.js';
+import {createWavHeader} from '../../core/utils.js';
+import {audioState} from '../../core/state.js';
 
 const OPENAI_SAMPLE_RATE = 24000;  // OpenAI uses 24kHz
 

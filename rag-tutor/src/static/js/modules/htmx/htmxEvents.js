@@ -1,8 +1,8 @@
-import { scrollToBottom } from './utils.js';
-import { initializeAudioPlayer, processAudioChunk } from './player.js';
-import { setupVisualization, clearVisualizations } from './visualizer.js';
-import { setupTextInputHandlers, setupPTTHandlers } from './domEvents.js';
-import { audioState } from './state.js';
+import { scrollToBottom } from '../../core/utils.js';
+import { initializeAudioPlayer, processAudioChunk } from '../audio/player.js';
+import { clearVisualizations, setupVisualization } from '../audio/visualizer.js';
+import { setupPTTHandlers, setupTextInputHandlers } from '../../core/domEvents.js';
+import { audioState } from '../../core/state.js';
 
 export function setupHTMXEvents() {
     htmx.config.wsReconnectDelay = 'full-jitter';

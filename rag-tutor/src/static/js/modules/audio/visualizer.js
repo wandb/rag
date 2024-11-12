@@ -1,4 +1,4 @@
-import { audioState } from './state.js';
+import {audioState} from '../../core/state.js';
 
 let clientCanvas, serverCanvas;
 let clientCtx, serverCtx;
