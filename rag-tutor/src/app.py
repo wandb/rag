@@ -15,181 +15,209 @@ from src.relay_service.oai_relay import OpenAIRealtimeClient
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
-tlink = Script(src="https://cdn.tailwindcss.com")
-custom_style = StyleX(fname=f"{static_dir}/css/style.css")
 
-dlink = Link(
-    rel="stylesheet",
-    href="https://cdn.jsdelivr.net/npm/daisyui@4.11.1/dist/full.min.css",
-)
-leaflet_css = Link(
-    rel="stylesheet", href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
-)
-
-leaflet_js = Script(src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js")
-htmx_ws = Script(src="https://unpkg.com/htmx-ext-ws@2.0.0/ws.js")
-fonts = (
-    Link(
-        rel="stylesheet",
-        href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600&display=swap",
-    ),
-)
 app, rt = fast_app(
     static_path=os.path.dirname(static_dir),
-    pico=True,
+    pico=False,
     htmx=True,
     ws_hdr=True,
     exts="ws",
     hdrs=(
-        tlink,
-        dlink,
-        leaflet_css,
-        custom_style,
-        leaflet_js,
-        htmx_ws,
-        fonts,
-        Script(src="https://unpkg.com/audiomotion-analyzer@4.5.0/dist/index.js"),
+        Script(src="https://cdn.tailwindcss.com"),
+        Meta(
+            name="viewport",
+            content="width=device-width, height=device-height, initial-scale=1.0",
+        ),
+        Link(
+            rel="stylesheet",
+            href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;500;600&display=swap",
+        ),
         Script(src="/static/js/index.js", type="module"),
+        Style,
     ),
 )
+
 
 # Store start time for event timestamps
 start_time = None
 
 
+def create_top_bar(item_id, button_text="connect"):
+    return Div(
+        H2(
+            "RagTutor Console",
+            cls="mx-4 h-1/2 text-md font-sans font-semibold text-[#FFFFFF]",
+        ),
+        Div(cls="grow"),
+        Select(
+            Option("alloy", value="alloy", selected=True),
+            Option("ash", value="ash"),
+            Option("ballad", value="ballad"),
+            Option("coral", value="coral"),
+            Option("echo", value="echo"),
+            Option("sage", value="sage"),
+            Option("shimmer", value="shimmer"),
+            Option("verse", value="verse"),
+            id="voice-selector",
+            cls="w-32 h-1/2 mx-2 px-4 select bg-[#ffcc33] border text-[#1A1C1F] "
+            "focus:outline-none focus:bg-white focus:border-gray-500 leading-tight text-md rounded-lg "
+            "font-sans disabled:opacity-75 disabled:bg-[#EE4B2B] disabled:cursor-not-allowed",
+        ),
+        Button(
+            button_text,
+            id="connect-btn",
+            hx_post=("/connect" if button_text == "connect" else "/disconnect"),
+            hx_swap="outerHTML",
+            cls="h-1/2 mx-4 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap "
+            "font-sans bg-[#ffcc33] disabled:opacity-75 disabled:bg-[#EE4B2B] "
+            "disabled:cursor-not-allowed",
+        ),
+        cls="h-16 flex flex-row bg-[#242629] border shadow-xl rounded-lg items-center justify-between overflow-hidden",
+        id=item_id,
+    )
+
+
+def create_visualization_canvas(name, item_id):
+    return Div(
+        H4(
+            name,
+            cls="mx-4 text-md font-sans font-semibold text-[#FFFFFF]",
+        ),
+        Canvas(
+            id=item_id,
+            cls="h-24 m-4 p-4 w-9/12 border rounded-lg",
+        ),
+        cls="flex flex-1 flex-col bg-[#242629] shadow-xl rounded-lg items-center justify-between"
+        "overflow-hidden",
+    )
+
+
+def create_visualization_panel(item_id):
+    return (
+        Div(
+            create_visualization_canvas(name="User", item_id="client-canvas"),
+            create_visualization_canvas(name="Assistant", item_id="server-canvas"),
+            cls="flex flex-row gap-4 w-full bg-[#242629] border shadow-xl rounded-lg rounded-lg items-center "
+            "justify-between",
+            id=item_id,
+        ),
+    )
+
+
+def create_conversation_panel(item_id, disabled=True):
+    return Div(
+        H3(
+            "Conversation",
+            cls="m-4 text-md font-sans font-semibold text-[#FFFFFF]",
+        ),
+        Div(
+            (
+                P(
+                    "awaiting connection...",
+                    cls="mx-4 text-xs font-sans font-light text-[#FFFFFF]",
+                )
+                if disabled
+                else None
+            ),
+            id="conversation-content",
+            cls="flex flex-col h-full flex-initial grow-0 overscroll-auto max-h-max gap-2 bg-[#242629] "
+            "overflow-y-auto",
+        ),
+        cls="flex flex-col flex-initial grow-0 overscroll-auto h-3/4 max-h-full gap-2 bg-[#242629] border shadow-xl "
+        "rounded-lg overflow-hidden overflow-y-auto",
+        id=item_id,
+    )
+
+
+def create_audio_panel(item_id, disabled=False):
+    return (
+        Div(
+            Audio(
+                id="audio-player",
+                controls=True,
+                preload="auto",
+                disabled=disabled,
+                cls="w-1/2 h-full rounded-lg disabled:opacity-75 disabled:cursor-not-allowed",
+            ),
+            cls="flex h-12 p-2 bg-[#242629] border shadow-xl rounded-lg overflow-hidden items-center justify-center",
+            id=item_id,
+        ),
+    )
+
+
+def create_inputs_panel(item_id, disabled=False):
+    return Div(
+        Input(
+            # type="text",
+            id="text-input",
+            placeholder="Type your message...",
+            disabled="disabled" if disabled else None,
+            cls="h-1/2 w-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-['Source Sans 3, "
+            "Sans-serif'] bg-white disabled:opacity-75 disabled:opacity-75 disabled:bg-gray-200 "
+            "disabled:cursor-not-allowed",
+        ),
+        Button(
+            "Send",
+            id="send-btn",
+            disabled="disabled" if disabled else None,
+            cls="m-1 h-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-['Source Sans 3, "
+            "Sans-serif'] bg-[#ffcc33] disabled:opacity-75 disabled:opacity-75 disabled:bg-[#EE4B2B] "
+            "disabled:cursor-not-allowed",
+        ),
+        Button(
+            "Push to Talk",
+            id="ptt-btn",
+            disabled="disabled" if disabled else None,
+            cls="m-1 h-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-['Source Sans 3, "
+            "Sans-serif'] bg-[#ffcc33] disabled:opacity-75 disabled:bg-[#EE4B2B] disabled:cursor-not-allowed",
+        ),
+        cls="flex flex-row h-16 gap-1 bg-[#242629] border shadow-xl rounded-lg overflow-hidden items-center "
+        "justify-center",
+        id=item_id,
+    )
+
+
 def create_layout(
     button_text="connect",
-    button_props={},
     ws_props={},
-    show_initial_messages=True,
+    disabled=True,
     audio_player_disabled=False,
-    controls_disabled=True,
     include_audio_stream=False,
 ):
     """Creates the main layout with configurable options"""
 
-    # Common button properties
-    default_button_props = {
-        "id": "connect-btn",
-        "hx_post": "/connect" if button_text == "connect" else "/disconnect",
-        "hx_swap": "outerHTML",
-    }
-    button_props = {**default_button_props, **button_props}
-
     # Common container properties
     container_props = {
-        "cls": "console-layout",
+        "cls": "h-screen w-screen p-4 bg-[#333] flex flex-col gap-4",
         "id": "ws-container",
     }
     container_props.update(ws_props)
 
-    return Div(
-        # Top Bar
-        Div(
-            Span("realtime console", style="margin-left:12px"),
-            Div(style="flex-grow:1"),
-            # Add voice selector dropdown
-            Select(
-                Option("alloy", value="alloy", selected=True),
-                Option("ash", value="ash"),
-                Option("ballad", value="ballad"),
-                Option("coral", value="coral"),
-                Option("echo", value="echo"),
-                Option("sage", value="sage"),
-                Option("shimmer", value="shimmer"),
-                Option("verse", value="verse"),
-                id="voice-selector",
-                cls="select select-bordered select-sm w-32 mr-2",
-            ),
-            Button(button_text, **button_props),
-            cls="top-bar",
-        ),
+    return Main(
         # Main Content
+        # Top Bar Panel
+        create_top_bar(item_id="top-bar", button_text=button_text),
+        # Visualization Panel
         Div(
-            # Events Panel
             Div(
-                # Events Section
-                Div(
-                    H3("events", style="margin:0 0 16px 0"),
-                    Div(
-                        P("awaiting connection...") if show_initial_messages else None,
-                        id="event-log",
-                        cls="event-log",
-                    ),
-                    cls="events-section",
+                create_visualization_panel(item_id="visualization-panel"),
+                # Conversation Panel
+                create_conversation_panel(
+                    item_id="conversation-panel", disabled=disabled
                 ),
-                # Visualization Panel
-                Div(
-                    Div(
-                        Div(
-                            Div(
-                                H4(
-                                    "User",
-                                    style="margin:0 0 8px 0; text-align:center",
-                                ),
-                                Canvas(id="client-canvas"),
-                                cls="visualization-entry client",
-                            ),
-                            Div(
-                                H4(
-                                    "Assistant",
-                                    style="margin:0 0 8px 0; text-align:center",
-                                ),
-                                Canvas(id="server-canvas"),
-                                cls="visualization-entry server",
-                            ),
-                            cls="visualization",
-                        ),
-                        cls="visualization-panel",
-                    ),
-                    cls="visualization-section",
+                # Audio Player
+                create_audio_panel(
+                    item_id="audio-panel", disabled=audio_player_disabled
                 ),
-                # Conversation Section
-                Div(
-                    H3("conversation", style="margin:0 0 16px 0"),
-                    Div(
-                        P("awaiting connection...") if show_initial_messages else None,
-                        id="conversation-content",
-                        cls="conversation-content",
-                    ),
-                    Div(
-                        Audio(
-                            id="audio-player",
-                            controls=True,
-                            preload="auto",
-                            disabled=audio_player_disabled,
-                        ),
-                        cls="audio-player-container",
-                    ),
-                    cls="conversation",
-                ),
-                cls="events-panel",
+                cls="flex flex-col flex-1 gap-4",
             ),
-            # Controls moved here, outside of events-panel
             Div(
-                Div(
-                    Input(
-                        type="text",
-                        id="text-input",
-                        placeholder="Type your message...",
-                        disabled="disabled" if controls_disabled else None,
-                    ),
-                    Button(
-                        "Send",
-                        id="send-btn",
-                        disabled="disabled" if controls_disabled else None,
-                    ),
-                    Button(
-                        "Push to Talk",
-                        id="ptt-btn",
-                        disabled="disabled" if controls_disabled else None,
-                    ),
-                    cls="controls-inner",
-                ),
-                cls="controls",
+                cls="flex flex-col flex-1 gap-4",
             ),
-            cls="main-content",
+            cls="flex flex-row flex-initial h-5/6 grow-0 gap-4",
         ),
+        # Inputs Panel
+        create_inputs_panel(item_id="inputs-panel", disabled=disabled),
         # Optional audio stream container
         (
             Div(id="audio-stream-container", style="display:none;")
@@ -202,7 +230,7 @@ def create_layout(
 
 @rt("/")
 def get():
-    return Container(create_layout())
+    return create_layout()
 
 
 @rt("/connect")
@@ -212,8 +240,7 @@ def post():
 
     return create_layout(
         button_text="disconnect",
-        show_initial_messages=False,
-        controls_disabled=False,
+        disabled=False,
         include_audio_stream=True,
         ws_props={
             "hx_ext": "ws",
@@ -261,14 +288,19 @@ async def send_conversation_message(
     await send(
         Div(
             Div(
-                Span(datetime.now().strftime("%H:%M:%S"), cls="event-timestamp"),
-                Span(speaker, cls="event-type"),
                 Div(
-                    message, cls=f"event-data{' error' if is_error else ''}", id=item_id
+                    speaker,
+                    cls="mx-4 w-1/12 text-xs font-sans font-light text-[#ffcc33] text-left",
                 ),
-                cls="event-item",
+                Div(
+                    message,
+                    cls=f"mx-1 flex-1 p-1 text-xs font-sans font-light text-[#FFFFFF] "
+                    f"text-wrap text-left whitespace-pre",
+                    id=item_id,
+                ),
+                cls="flex flex-row content-start",
             ),
-            cls="conversation-content",
+            cls="flex flex-col gap-1",
             id="conversation-content",
             hx_swap_oob="beforeend",
         )

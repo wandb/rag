@@ -144,7 +144,7 @@ export function setupVisualization() {
                     const result = audioState.recorder.getFrequencies('voice');
                     // Only draw if we have actual audio data (values above 0)
                     if (result.values.some(value => value > 0)) {
-                        drawBars(clientCanvas, clientCtx, result.values, '#0099ff');
+                        drawBars(clientCanvas, clientCtx, result.values, '#ffcc33');
                     } else {
                         clientCtx.clearRect(0, 0, clientCanvas.width, clientCanvas.height);
                     }
@@ -161,7 +161,7 @@ export function setupVisualization() {
                     const result = audioState.streamPlayer.getFrequencies('voice');
                     // Only draw if we have actual audio data (values above 0)
                     if (result.values.some(value => value > 0)) {
-                        drawBars(serverCanvas, serverCtx, result.values, '#ff9900');
+                        drawBars(serverCanvas, serverCtx, result.values, '#ffcc33');
                     } else {
                         serverCtx.clearRect(0, 0, serverCanvas.width, serverCanvas.height);
                     }
