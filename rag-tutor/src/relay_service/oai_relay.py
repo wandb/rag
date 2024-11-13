@@ -38,7 +38,6 @@ class OpenAIRealtimeClient:
         )
         self.task = None
         self.message_callback = message_callback
-        self.function_call_buffers = {}
         self.retriever = HybridRetriever.load()
 
     async def connect(self):
@@ -137,25 +136,6 @@ class OpenAIRealtimeClient:
             print(f"Error in function call: {e}")
             error_msg = f"Error executing function: {str(e)}"
 
-            # error_output_item = client_events.ConversationItem(
-            #     type="function_call_output",
-            #     call_id=call_id,  # Link to the original function call
-            #     output=error_msg,
-            # )
-            #
-            # error_event = client_events.ConversationItemCreate(
-            #     type=ClientEventTypes.CONVERSATION_ITEM_CREATE,
-            #     item=error_output_item,
-            # )
-            #
-            # await self.send(error_event.model_dump_json(exclude_none=True))
-            #
-            # # Even in case of error, we should trigger the assistant's response
-            # response_event = client_events.ResponseCreate(
-            #     type=ClientEventTypes.RESPONSE_CREATE
-            # )
-            # await self.send(response_event.model_dump_json(exclude_none=True))
-
             return error_msg
 
     async def receive_messages(self):
@@ -181,7 +161,7 @@ class OpenAIRealtimeClient:
                             | ServerEventTypes.ERROR
                         ):
                             if self.message_callback:
-                                await self.message_callback(parsed_event)
+                                await self.message_callback(parsed_event, message_data)
 
                         case (
                             ServerEventTypes.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED
@@ -193,28 +173,14 @@ class OpenAIRealtimeClient:
                                 response_event.model_dump_json(exclude_none=True)
                             )
                             if self.message_callback:
-                                await self.message_callback(parsed_event)
-
-                        case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DELTA:
-                            # Accumulate function call deltas
-                            buffer_key = (
-                                f"{parsed_event.response_id}:{parsed_event.call_id}"
-                            )
-                            if buffer_key not in self.function_call_buffers:
-                                self.function_call_buffers[buffer_key] = ""
-                            self.function_call_buffers[buffer_key] += parsed_event.delta
+                                await self.message_callback(parsed_event, message_data)
 
                         case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
-                            buffer_key = (
-                                f"{parsed_event.response_id}:{parsed_event.call_id}"
-                            )
-                            accumulated_json = self.function_call_buffers.pop(
-                                buffer_key, ""
-                            )
-                            # print(f"Function call arguments: {accumulated_json}")
-
                             # Get the function name from the message data
                             function_name = message_data.get("name")
+                            if self.message_callback:
+                                await self.message_callback(parsed_event, message_data)
+
                             if not function_name:
                                 # print("Warning: No function name found in message data")
                                 return
@@ -230,7 +196,9 @@ class OpenAIRealtimeClient:
                             )
 
                             if self.message_callback:
-                                await self.message_callback(parsed_event)
+                                await self.message_callback(
+                                    parsed_event, function_response
+                                )
 
                 except ValueError as e:
                     print(f"Error parsing event: {e}")

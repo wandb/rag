@@ -18,6 +18,7 @@ static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
 app, rt = fast_app(
     static_path=os.path.dirname(static_dir),
+    # live=True,
     pico=False,
     htmx=True,
     ws_hdr=True,
@@ -33,7 +34,7 @@ app, rt = fast_app(
             href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;500;600&display=swap",
         ),
         Script(src="/static/js/index.js", type="module"),
-        Style,
+        MarkdownJS(".markdown"),
     ),
 )
 
@@ -81,13 +82,13 @@ def create_visualization_canvas(name, item_id):
     return Div(
         H4(
             name,
-            cls="mx-4 text-md font-sans font-semibold text-[#FFFFFF]",
+            cls="mx-4 mt-4 text-md font-sans font-semibold text-[#FFFFFF]",
         ),
         Canvas(
             id=item_id,
             cls="h-24 m-4 p-4 w-9/12 border rounded-lg",
         ),
-        cls="flex flex-1 flex-col bg-[#242629] shadow-xl rounded-lg items-center justify-between"
+        cls="flex flex-1 flex-col bg-[#242629] shadow-xl rounded-lg items-center justify-items-center"
         "overflow-hidden",
     )
 
@@ -137,7 +138,7 @@ def create_audio_panel(item_id, disabled=False):
                 controls=True,
                 preload="auto",
                 disabled=disabled,
-                cls="w-1/2 h-full rounded-lg disabled:opacity-75 disabled:cursor-not-allowed",
+                cls="w-3/4 h-full rounded-lg disabled:opacity-75 disabled:cursor-not-allowed",
             ),
             cls="flex h-12 p-2 bg-[#242629] border shadow-xl rounded-lg overflow-hidden items-center justify-center",
             id=item_id,
@@ -152,27 +153,50 @@ def create_inputs_panel(item_id, disabled=False):
             id="text-input",
             placeholder="Type your message...",
             disabled="disabled" if disabled else None,
-            cls="h-1/2 w-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-['Source Sans 3, "
-            "Sans-serif'] bg-white disabled:opacity-75 disabled:opacity-75 disabled:bg-gray-200 "
-            "disabled:cursor-not-allowed",
+            cls="h-1/2 w-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-sans bg-[#45494f] "
+            "disabled:opacity-75 disabled:opacity-75 disabled:bg-gray-200 disabled:cursor-not-allowed",
         ),
         Button(
             "Send",
             id="send-btn",
             disabled="disabled" if disabled else None,
-            cls="m-1 h-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-['Source Sans 3, "
-            "Sans-serif'] bg-[#ffcc33] disabled:opacity-75 disabled:opacity-75 disabled:bg-[#EE4B2B] "
-            "disabled:cursor-not-allowed",
+            cls="m-1 h-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-sans bg-[#ffcc33] "
+            "disabled:opacity-75 disabled:opacity-75 disabled:bg-[#EE4B2B] disabled:cursor-not-allowed",
         ),
         Button(
             "Push to Talk",
             id="ptt-btn",
             disabled="disabled" if disabled else None,
-            cls="m-1 h-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-['Source Sans 3, "
-            "Sans-serif'] bg-[#ffcc33] disabled:opacity-75 disabled:bg-[#EE4B2B] disabled:cursor-not-allowed",
+            cls="m-1 h-1/2 p-1 rounded-lg text-md border text-[#1A1C1F] whitespace-nowrap font-sans bg-[#ffcc33] "
+            "disabled:opacity-75 disabled:bg-[#EE4B2B] disabled:cursor-not-allowed",
         ),
         cls="flex flex-row h-16 gap-1 bg-[#242629] border shadow-xl rounded-lg overflow-hidden items-center "
         "justify-center",
+        id=item_id,
+    )
+
+
+def create_function_calls_panel(item_id, disabled=True):
+    return Div(
+        H3(
+            "Function Calls",
+            cls="m-4 text-md font-sans font-semibold text-[#FFFFFF]",
+        ),
+        Div(
+            (
+                P(
+                    "awaiting connection...",
+                    cls="mx-4 text-xs font-sans font-light text-[#FFFFFF]",
+                )
+                if disabled
+                else None
+            ),
+            id="function-call-content",
+            cls="flex flex-col flex-initial h-full w-full grow-0 overscroll-auto max-h-max gap-2 bg-[#242629] "
+            "overflow-y-auto overflow-x-auto",
+        ),
+        cls="flex flex-col flex-1 h-full w-full overscroll-auto gap-2 bg-[#242629] border shadow-xl "
+        "rounded-lg overflow-hidden overflow-y-auto overflow-x-auto overflow-hidden",
         id=item_id,
     )
 
@@ -194,7 +218,6 @@ def create_layout(
     container_props.update(ws_props)
 
     return Main(
-        # Main Content
         # Top Bar Panel
         create_top_bar(item_id="top-bar", button_text=button_text),
         # Visualization Panel
@@ -212,9 +235,12 @@ def create_layout(
                 cls="flex flex-col flex-1 gap-4",
             ),
             Div(
-                cls="flex flex-col flex-1 gap-4",
+                create_function_calls_panel(
+                    item_id="function-calls-panel", disabled=disabled
+                ),
+                cls="flex flex-col flex-1 gap-4 overflow-hidden",
             ),
-            cls="flex flex-row flex-initial h-5/6 grow-0 gap-4",
+            cls="flex flex-row flex-initial h-5/6 grow-0 gap-4 overflow-hidden",
         ),
         # Inputs Panel
         create_inputs_panel(item_id="inputs-panel", disabled=disabled),
@@ -282,26 +308,52 @@ async def send_event_log(send, event_type: str, event_data: str):
 
 
 async def send_conversation_message(
-    send, item_id: str, speaker: str, message: str = "", is_error: bool = False
+    send, item_id: str, origin: str, message: str = "", is_error: bool = False
 ):
     """Utility function to send conversation updates via HTMX"""
     await send(
         Div(
             Div(
                 Div(
-                    speaker,
+                    origin,
                     cls="mx-4 w-1/12 text-xs font-sans font-light text-[#ffcc33] text-left",
                 ),
                 Div(
                     message,
                     cls=f"mx-1 flex-1 p-1 text-xs font-sans font-light text-[#FFFFFF] "
-                    f"text-wrap text-left whitespace-pre",
+                    f"text-wrap text-left whitespace-pre markdown",
                     id=item_id,
                 ),
                 cls="flex flex-row content-start",
             ),
             cls="flex flex-col gap-1",
             id="conversation-content",
+            hx_swap_oob="beforeend",
+        )
+    )
+
+
+async def send_function_call_message(
+    send, item_id: str, origin: str, message: str = "", is_error: bool = False
+):
+    """Utility function to send function call updates via HTMX"""
+    await send(
+        Div(
+            Div(
+                Div(
+                    origin,
+                    cls="mx-4 w-1/12 text-xs font-sans font-light text-[#ffcc33] text-left",
+                ),
+                Div(
+                    message,
+                    cls=f"mx-1 flex-1 p-1 text-xs font-sans font-light text-[#FFFFFF] "
+                    f"text-wrap text-left whitespace-pre markdown",
+                    id=item_id,
+                ),
+                cls="flex flex-row content-start",
+            ),
+            cls="flex flex-col gap-1",
+            id="function-call-content",
             hx_swap_oob="beforeend",
         )
     )
@@ -323,9 +375,12 @@ async def update_conversation_message(
 
 class OpenAIMessageHandler:
     def __init__(self):
+        self.assistant_message_created = None
         self.openai_client = None
 
-    async def relay_openai_message(self, send, parsed_event: ServerEvent):
+    async def relay_openai_message(
+        self, send, parsed_event: ServerEvent, message: dict = None
+    ):
         """
         Relay OpenAI messages to the client with appropriate UI updates.
 
@@ -392,11 +447,26 @@ class OpenAIMessageHandler:
                 )
 
             case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
-                await send_event_log(
-                    send,
-                    "Function Call",
-                    f"Function call completed: {parsed_event.arguments}",
-                )
+                if isinstance(message, dict):
+                    await send_function_call_message(
+                        send,
+                        parsed_event.item_id,
+                        "Assistant",
+                        f"{message.get('name')}({parsed_event.arguments})",
+                    )
+                    await send_event_log(
+                        send,
+                        "Function Call",
+                        f"Calling function: {message.get('name')} with arguments {parsed_event.arguments}",
+                    )
+                else:
+                    await send_function_call_message(
+                        send,
+                        parsed_event.item_id,
+                        "Function",
+                        message,
+                    )
+                    await send_event_log(send, "Function", message)
 
             case ServerEventTypes.ERROR:
                 await send_event_log(send, "Error", str(parsed_event.error.message))
@@ -431,7 +501,9 @@ class OpenAIMessageHandler:
 
     async def on_connect(self, send):
         try:
-            message_handler = lambda event: self.relay_openai_message(send, event)
+            message_handler = lambda event, message: self.relay_openai_message(
+                send, event, message
+            )
             self.openai_client = OpenAIRealtimeClient(message_callback=message_handler)
             await self.openai_client.start()
 
