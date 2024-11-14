@@ -17,7 +17,6 @@ from src.relay_service.oai_relay import OpenAIRealtimeClient
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
-
 app, rt = fast_app(
     static_path=os.path.dirname(static_dir),
     # live=True,
@@ -39,7 +38,6 @@ app, rt = fast_app(
         MarkdownJS(".markdown"),
     ),
 )
-
 
 # Store start time for event timestamps
 start_time = None
@@ -81,31 +79,29 @@ def post():
     )
 
 
-async def send_event_log(send, event_type: str, event_data: str):
+def send_event_log(event_type: str, event_data: str):
     """Utility function to send event log updates via HTMX"""
     logger.info(f"{event_type}: {event_data}")
 
 
-async def send_conversation_message(
-    send, item_id: str, origin: str, message: str = "", is_error: bool = False
-):
+async def send_conversation_message(send, item_id: str, origin: str, message: str = ""):
     """Utility function to send conversation updates via HTMX"""
     await send(
         Div(
             Div(
                 Div(
                     origin,
-                    cls="mx-4 w-1/12 text-xs font-sans font-light text-[#ffcc33] text-left",
+                    cls="mx-4 w-1/12 text-xs font-sans font-light text-[#ffcc33] text-left hover:text-sm",
                 ),
                 Div(
                     message,
                     cls=f"mx-1 flex-1 p-1 text-xs font-sans font-light text-[#FFFFFF] "
-                    f"text-wrap text-left whitespace-pre markdown",
+                    f"text-wrap text-left whitespace-pre markdown hover:text-sm",
                     id=item_id,
                 ),
                 cls="flex flex-row content-start",
             ),
-            cls="flex flex-col gap-1",
+            cls="flex flex-col h-full flex-initial grow-0 overscroll-auto max-h-max gap-2 bg-[#1A1D24] overflow-y-auto",
             id="conversation-content",
             hx_swap_oob="beforeend",
         )
@@ -113,7 +109,7 @@ async def send_conversation_message(
 
 
 async def send_function_call_message(
-    send, item_id: str, origin: str, message: str = "", is_error: bool = False
+    send, item_id: str, origin: str, message: str = ""
 ):
     """Utility function to send function call updates via HTMX"""
     await send(
@@ -121,12 +117,12 @@ async def send_function_call_message(
             Div(
                 Div(
                     origin,
-                    cls="mx-4 w-1/12 text-xs font-sans font-light text-[#ffcc33] text-left",
+                    cls="mx-4 w-1/12 text-xs font-sans font-light text-[#ffcc33] text-left hover:text-sm",
                 ),
                 Div(
                     message,
                     cls=f"mx-1 flex-1 p-1 text-xs font-sans font-light text-[#FFFFFF] "
-                    f"text-wrap text-left whitespace-pre markdown",
+                    f"text-wrap text-left whitespace-pre markdown hover:text-sm",
                     id=item_id,
                 ),
                 cls="flex flex-row content-start",
@@ -145,7 +141,7 @@ async def update_conversation_message(
     await send(
         Div(
             delta,
-            cls=f"event-data{' error' if is_error else ''}",
+            # cls=f"event-data{' error' if is_error else ''}",
             id=item_id,
             hx_swap_oob="beforeend",
         )
@@ -158,7 +154,7 @@ class OpenAIMessageHandler:
         self.openai_client = None
 
     async def relay_openai_message(
-        self, send, parsed_event: ServerEvent, message: dict = None
+        self, send, parsed_event: ServerEvent, message: dict | str | None = None
     ):
         """
         Relay OpenAI messages to the client with appropriate UI updates.
@@ -166,28 +162,27 @@ class OpenAIMessageHandler:
         Args:
             send: Websocket send function
             parsed_event: Parsed server event from OpenAI
+            message: Optional message data to relay to the client
         """
         match parsed_event.type:
             case ServerEventTypes.SESSION_CREATED:
-                await send_event_log(
-                    send, "Session Created", f"Session ID: {parsed_event.event_id}"
+                send_event_log(
+                    "Session Created", f"Session ID: {parsed_event.event_id}"
                 )
 
             case ServerEventTypes.SESSION_UPDATED:
-                await send_event_log(
-                    send, "Session Updated", f"Session ID: {parsed_event.event_id}"
+                send_event_log(
+                    "Session Updated", f"Session ID: {parsed_event.event_id}"
                 )
 
             case ServerEventTypes.CONVERSATION_CREATED:
-                await send_event_log(
-                    send,
+                send_event_log(
                     "Conversation Started",
                     f"Conversation ID: {parsed_event.conversation.id}",
                 )
 
             case ServerEventTypes.CONVERSATION_ITEM_CREATED:
-                await send_event_log(
-                    send,
+                send_event_log(
                     "Conversation Item Created",
                     f"Conversation Item ID: {parsed_event.event_id}",
                 )
@@ -221,8 +216,8 @@ class OpenAIMessageHandler:
                         }
                     )
                 )
-                await send_event_log(
-                    send, "Audio Complete", f"Response ID: {parsed_event.response_id}"
+                send_event_log(
+                    "Audio Complete", f"Response ID: {parsed_event.response_id}"
                 )
 
             case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
@@ -233,8 +228,7 @@ class OpenAIMessageHandler:
                         "Assistant",
                         f"{message.get('name')}({parsed_event.arguments})",
                     )
-                    await send_event_log(
-                        send,
+                    send_event_log(
                         "Function Call",
                         f"Calling function: {message.get('name')} with arguments {parsed_event.arguments}",
                     )
@@ -245,10 +239,10 @@ class OpenAIMessageHandler:
                         "Function",
                         message,
                     )
-                    await send_event_log(send, "Function", message)
+                    send_event_log("Function", message)
 
             case ServerEventTypes.ERROR:
-                await send_event_log(send, "Error", str(parsed_event.error.message))
+                send_event_log("Error", str(parsed_event.error.message))
 
             case ServerEventTypes.RESPONSE_AUDIO_TRANSCRIPT_DELTA:
                 # Check if the message item already exists, if not, create it
@@ -274,21 +268,20 @@ class OpenAIMessageHandler:
                         }
                     )
                 )
-                await send_event_log(
-                    send, "Response Created", f"Response ID: {parsed_event.response.id}"
+                send_event_log(
+                    "Response Created", f"Response ID: {parsed_event.response.id}"
                 )
 
     async def on_connect(self, send):
         try:
-            message_handler = lambda event, message: self.relay_openai_message(
-                send, event, message
-            )
-            self.openai_client = OpenAIRealtimeClient(message_callback=message_handler)
+
+            async def message_callback(event, message):
+                return await self.relay_openai_message(send, event, message)
+
+            self.openai_client = OpenAIRealtimeClient(message_callback=message_callback)
             await self.openai_client.start()
 
-            await send_event_log(
-                send, "Connected", "New WebSocket connection established"
-            )
+            send_event_log("Connected", "New WebSocket connection established")
         except Exception as e:
             print(f"Error sending initial message: {e}")
 
@@ -297,13 +290,12 @@ class OpenAIMessageHandler:
             await self.openai_client.stop()
             self.openai_client = None
 
-    async def process_user_audio(self, audio_data: str, metadata: dict) -> None:
+    async def process_user_audio(self, audio_data: str) -> None:
         """
         Process audio data and send it to OpenAI client
 
         Args:
             audio_data: Base64 encoded WAV data
-            metadata: Audio metadata containing sampleRate and duration
         """
 
         # Decode base64 WAV data
@@ -368,9 +360,7 @@ class OpenAIMessageHandler:
             case "voice_config":
                 if self.openai_client and (voice := data.get("voice")):
                     await self.openai_client.configure_session(voice=voice)
-                    await send_event_log(
-                        send, "Voice Configuration", f"Set voice to: {voice}"
-                    )
+                    send_event_log("Voice Configuration", f"Set voice to: {voice}")
 
             case "cancel":
                 if hasattr(self, "current_task"):
@@ -384,35 +374,29 @@ class OpenAIMessageHandler:
                     cancel_event.model_dump_json(exclude_none=True)
                 )
 
-                await send_event_log(send, "Cancelled", "Audio streaming cancelled")
+                send_event_log("Cancelled", "Audio streaming cancelled")
 
             case "audio":
                 if audio_data := data.get("data"):
                     try:
-                        await self.process_user_audio(
-                            audio_data, data.get("metadata", {})
-                        )
-                        await send_event_log(
-                            send, "Audio received", f"Length: {len(audio_data)} bytes"
+                        await self.process_user_audio(audio_data)
+                        send_event_log(
+                            "Audio received", f"Length: {len(audio_data)} bytes"
                         )
                     except Exception as e:
-                        await send_event_log(
-                            send, "Error", f"Failed to process audio: {str(e)}"
-                        )
+                        send_event_log("Error", f"Failed to process audio: {str(e)}")
 
             case "text":
                 if text_data := data.get("data"):
                     try:
                         await self.process_user_text(send, text_data)
-                        await send_event_log(send, "Text received", f"{text_data}")
+                        send_event_log("Text received", f"{text_data}")
                     except Exception as e:
-                        await send_event_log(
-                            send, "Error", f"Failed to process text: {str(e)}"
-                        )
+                        send_event_log("Error", f"Failed to process text: {str(e)}")
 
             case _:
-                await send_event_log(
-                    send, "Unknown Event", f"Received unknown message type: {msg_type}"
+                send_event_log(
+                    "Unknown Event", f"Received unknown message type: {msg_type}"
                 )
 
 
