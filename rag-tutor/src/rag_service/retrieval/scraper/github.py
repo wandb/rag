@@ -13,8 +13,8 @@ from nbformat import reads
 from nbformat.validator import normalize as nb_normalize
 from traitlets.config import Config
 
-from src.retrieval.models import Document
-from src.retrieval.utils import (
+from src.rag_service.retrieval.models import Document
+from src.rag_service.utils import (
     cleanup_text,
     html_to_md,
     length_fn,

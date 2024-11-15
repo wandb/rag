@@ -4,8 +4,13 @@ from typing import Callable, Sequence
 from bs4 import BeautifulSoup, Tag
 from tree_sitter_languages import get_parser
 
-from src.retrieval.models import Document, DocumentChunk
-from src.retrieval.utils import cleanup_text, html_to_md, length_fn, md_to_html
+from src.rag_service.retrieval.models import Document, DocumentChunk
+from src.rag_service.utils import (
+    cleanup_text,
+    html_to_md,
+    length_fn,
+    md_to_html,
+)
 
 warnings.filterwarnings("ignore")
 

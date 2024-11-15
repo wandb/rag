@@ -1,8 +1,8 @@
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Sequence
 
 from pydantic import BaseModel, computed_field
 
-from src.retrieval.utils import generate_key
+from src.rag_service.utils import generate_key
 
 source_types = Literal["Webpage", "Paper", "Notebook", "Source Code"]
 
@@ -48,6 +48,27 @@ class DocumentChunk(BaseModel):
             f"{self.content}"
         ).strip()
 
+        return content_str
+
+    @computed_field
+    @property
+    def id(self) -> str:
+        return generate_key(self.as_str)
+
+
+class RetrievalResults(BaseModel):
+    query: str
+    results: Sequence[DocumentChunk]
+
+    @property
+    def as_str(self):
+        snippets_str = ""
+        for idx, result in enumerate(self.results):
+            snippets_str += f"\n<snippet idx={idx+1}>\n{result.as_str}\n</snippet>\n"
+
+        content_str = (
+            f"<query>\n{self.query}\b</query>\b<snippets>{snippets_str}</snippets>"
+        )
         return content_str
 
     @computed_field

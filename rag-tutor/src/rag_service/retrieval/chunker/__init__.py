@@ -1,9 +1,9 @@
 from typing import Callable, Sequence
 
-from src.retrieval.chunker.code_chunker import chunk_code
-from src.retrieval.chunker.md_chunker import chunk_doc as chunk_web_doc
-from src.retrieval.models import Document, DocumentChunk
-from src.retrieval.utils import length_fn
+from src.rag_service.retrieval.chunker.code_chunker import chunk_code
+from src.rag_service.retrieval.chunker.md_chunker import chunk_doc as chunk_web_doc
+from src.rag_service.retrieval.models import Document, DocumentChunk
+from src.rag_service.utils import length_fn
 
 
 def chunk_doc(

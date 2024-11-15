@@ -1,17 +1,19 @@
 import asyncio
-from typing import Any
+from typing import Any, Sequence
 
 import lancedb
 import litellm
 import weave
 from litellm import arerank
-from litellm.caching import Cache
+from litellm.caching import Cache, LiteLLMCacheType
 
-from src.pipeline.query_expansion import query_expansion
-from src.retrieval.models import DocumentChunk
+from src.rag_service.query_expansion import query_expansion
+from src.rag_service.retrieval.models import DocumentChunk, RetrievalResults
+from src.rag_service.utils import CACHE_DIR, dedupe_docs, embed_documents
 
-litellm.cache = Cache(type="disk", disk_cache_dir="data/cache/litellm")
-from src.retrieval.utils import dedupe_docs, embed_documents, flatten_sequence
+disk_cache_dir = CACHE_DIR / "litellm"
+litellm.cache = Cache(type=LiteLLMCacheType.DISK, disk_cache_dir=str(disk_cache_dir))
+litellm.suppress_debug_info = True
 
 
 def iter_data(
@@ -42,7 +44,7 @@ class HybridRetriever(weave.Model):
     embed_field: str = "embed_content"
     fts_field: str = "embed_content"
     rerank_model: str = "cohere/rerank-english-v3.0"
-    use_query_expansion: bool = False
+    use_query_expansion: bool = True
     db: Any = None
     table: Any = None
 
@@ -96,6 +98,7 @@ class HybridRetriever(weave.Model):
         documents = [doc[self.embed_field] for doc in docs]
         response = await arerank(
             model=self.rerank_model,
+            custom_llm_provider="cohere",
             query=query,
             documents=documents,
             top_n=top_n or len(docs),
@@ -108,26 +111,29 @@ class HybridRetriever(weave.Model):
         return outputs[:top_n]
 
     @weave.op
-    async def retrieve_and_rerank(self, query, k=15) -> list[DocumentChunk]:
+    async def retrieve_and_rerank(self, query, k=15) -> Sequence[DocumentChunk]:
         documents = await self.retrieve(query, k=k * 20)
         deduped_docs = dedupe_docs(documents, key="content")
         reranked_docs = await self.rerank(query, deduped_docs, top_n=k * 2)
         return reranked_docs
 
     @weave.op
-    async def invoke(self, query, limit=5):
+    async def invoke(self, query, limit=5) -> Sequence[RetrievalResults]:
         if self.use_query_expansion:
             queries = await query_expansion(query)
-            tasks = [self.retrieve_and_rerank(q, k=limit) for q in queries + [query]]
+            tasks = [self.retrieve_and_rerank(q, k=limit) for q in [query] + queries]
             all_docs = await asyncio.gather(*tasks)
-            flattened_docs = flatten_sequence(all_docs)
-            deduped_docs = dedupe_docs(flattened_docs, key="content")
-            results = await self.rerank(query, deduped_docs, top_n=limit)
-
+            final_results = [
+                [DocumentChunk(**doc) for doc in results] for results in all_docs
+            ]
+            return [
+                RetrievalResults(query=query, results=results)
+                for results in final_results
+            ]
         else:
             results = await self.retrieve_and_rerank(query, k=limit)
-        final_results = [DocumentChunk(**doc) for doc in results][:limit]
-        return final_results
+            final_results = [DocumentChunk(**doc) for doc in results][:limit]
+            return [RetrievalResults(query=query, results=final_results)]
 
     @classmethod
     def load(cls, uri="data/documents.db", table_name="documents"):

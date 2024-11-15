@@ -1,0 +1,28 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "SemanticSearchEngine",
+      "description": "A semantic search engine use to retrieve snippets of information from the web",
+      "parameters": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "A detailed natural language question to search for relevant information",
+            "title": "Search Question"
+          },
+          "limit": {
+            "default": 5,
+            "type": "integer",
+            "title": "Limit",
+            "description": "The number of snippets to retrieve"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      }
+    }
+  }
+]

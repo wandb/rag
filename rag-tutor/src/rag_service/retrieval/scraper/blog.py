@@ -11,8 +11,13 @@ from crawl4ai.async_crawler_strategy import (
 )
 from playwright.async_api import Browser, Error, Page
 
-from src.retrieval.models import Document
-from src.retrieval.utils import cleanup_text, html_to_md, length_fn, load_html_content
+from src.rag_service.retrieval.models import Document
+from src.rag_service.utils import (
+    cleanup_text,
+    html_to_md,
+    length_fn,
+    load_html_content,
+)
 
 readability_script_url = (
     "https://cdnjs.cloudflare.com/ajax/libs/readability/0.5.0/Readability.js"

@@ -3,8 +3,7 @@ from typing import Callable, Sequence
 
 from tree_sitter_languages import get_parser
 
-from src.retrieval.models import Document, DocumentChunk
-from src.retrieval.utils import length_fn
+from src.rag_service.retrieval.models import Document, DocumentChunk
 
 warnings.filterwarnings("ignore")
 

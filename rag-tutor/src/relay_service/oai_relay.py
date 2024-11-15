@@ -2,10 +2,12 @@ import asyncio
 import json
 import os
 
+import weave
 import websockets
+from loguru import logger
 from pydantic import ValidationError
 
-from src.pipeline.docstore import HybridRetriever
+from src.rag_service.generation import ask_expert
 from src.relay_service.models import (
     server_events,
     client_events,
@@ -15,19 +17,20 @@ from src.relay_service.models import (
 
 SYSTEM_PROMPT = open("src/relay_service/instructions.md").read().strip()
 
-SEARCH_RETRIEVE_TOOL = client_events.Tool(
+AskExpert = client_events.Tool(
     type="function",
-    name="SearchRetrieve",
-    description="A tool to search for relevant information from a knowledge engine",
+    name="AskExpert",
+    description="Ask an GenAI expert to research and explain technical concepts",
     parameters=client_events.ToolParameter(
         type="object",
         properties={
             "query": client_events.ToolParameterProperty(type="string"),
-            "limit": client_events.ToolParameterProperty(type="integer"),
         },
         required=["query"],
     ),
 )
+
+FUNCTIONS_MAP = {"AskExpert": ask_expert}
 
 
 class OpenAIRealtimeClient:
@@ -38,7 +41,6 @@ class OpenAIRealtimeClient:
         )
         self.task = None
         self.message_callback = message_callback
-        self.retriever = HybridRetriever.load()
 
     async def connect(self):
         """Establish WebSocket connection"""
@@ -61,8 +63,8 @@ class OpenAIRealtimeClient:
                     model="whisper-1"
                 ),
                 turn_detection=None,
-                voice=voice,  # Add voice to session configuration
-                tools=[SEARCH_RETRIEVE_TOOL],
+                voice=voice,
+                tools=[AskExpert],
                 tool_choice="auto",
             )
         )
@@ -101,18 +103,21 @@ class OpenAIRealtimeClient:
     ):
         """Handle function calls from the LLM"""
         try:
-            args = json.loads(arguments)
-            if function_name == "SearchRetrieve":
-                results = await self.retriever.invoke(
-                    query=args.get("query"), limit=args.get("limit", 5)
-                )
-                formatted_response = "\n---\n".join([doc.as_str for doc in results])
+            if function_name in FUNCTIONS_MAP:
 
+                @weave.op(name="execute_function")
+                async def execute_function(fn_name: str, function_args: str) -> str:
+                    function = FUNCTIONS_MAP.get(fn_name)
+                    args = json.loads(function_args)
+                    expert_response = await function(query=args.get("query"))
+                    return expert_response
+
+                fn_response = await execute_function(function_name, arguments)
                 # Create the function call output item
                 function_output_item = client_events.ConversationItem(
                     type="function_call_output",
-                    call_id=call_id,  # Link to the original function call
-                    output=formatted_response,
+                    call_id=call_id,
+                    output=fn_response,
                 )
 
                 # Create and send the conversation item create event
@@ -130,7 +135,7 @@ class OpenAIRealtimeClient:
                 )
                 await self.send(response_event.model_dump_json(exclude_none=True))
 
-                return formatted_response
+                return fn_response
 
         except Exception as e:
             print(f"Error in function call: {e}")
@@ -176,22 +181,20 @@ class OpenAIRealtimeClient:
                                 await self.message_callback(parsed_event, message_data)
 
                         case ServerEventTypes.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
-                            # Get the function name from the message data
                             function_name = message_data.get("name")
                             if self.message_callback:
                                 await self.message_callback(parsed_event, message_data)
 
                             if not function_name:
-                                # print("Warning: No function name found in message data")
+                                logger.warning("No function name found in message data")
                                 return
 
-                            # Execute function and get response
                             function_response = await self.handle_function_call(
                                 function_name,
                                 parsed_event.arguments,
                                 parsed_event.call_id,
                             )
-                            print(
+                            logger.debug(
                                 f"Function response: {function_response[:100]} ... {function_response[-100:]}"
                             )
 

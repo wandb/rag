@@ -1,4 +1,5 @@
 import hashlib
+import pathlib
 import re
 import uuid
 from functools import partial
@@ -14,11 +15,16 @@ import shortuuid
 import tiktoken
 from bs4 import BeautifulSoup, Tag
 from litellm import embedding
-from litellm.caching import Cache
+from litellm.caching import Cache, LiteLLMCacheType
 from lxml import etree
 from markdownify import markdownify
 
-litellm.cache = Cache(type="disk", disk_cache_dir="data/cache/litellm")
+CACHE_DIR = pathlib.Path("data/cache/")
+PROMPTS_DIR = pathlib.Path("src/rag_service/prompts/")
+
+disk_cache_dir = CACHE_DIR / "litellm"
+litellm.cache = Cache(type=LiteLLMCacheType.DISK, disk_cache_dir=str(disk_cache_dir))
+litellm.suppress_debug_info = True
 
 encoding = tiktoken.encoding_for_model("gpt-4o")
 special_tokens_set = encoding.special_tokens_set
@@ -242,7 +248,9 @@ def cleanup_text(text: str) -> str:
 
 
 def embed_documents(documents, model="text-embedding-3-small", dimensions=512):
-    response = embedding(model=model, input=documents, dimensions=dimensions)
+    response = embedding(
+        model=model, input=documents, dimensions=dimensions, caching=True
+    )
     vectors = [item["embedding"] for item in response.data]
     return vectors
 
