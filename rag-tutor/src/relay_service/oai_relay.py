@@ -14,6 +14,7 @@ from src.relay_service.models import (
     ClientEventTypes,
     ServerEventTypes,
 )
+from src.scrapegraph_service.web_tool import get_web_info
 
 SYSTEM_PROMPT = open("src/relay_service/instructions.md").read().strip()
 
@@ -30,7 +31,22 @@ AskExpert = client_events.Tool(
     ),
 )
 
-FUNCTIONS_MAP = {"AskExpert": ask_expert}
+ReadPage = client_events.Tool(
+    type="function",
+    name="ReadPage",
+    description="An assistant tool to read a web page and extract information. Use the 'url' parameter to specify the "
+    "page URL and the 'task' parameter to specify the task to be performed.",
+    parameters=client_events.ToolParameter(
+        type="object",
+        properties={
+            "task": client_events.ToolParameterProperty(type="string"),
+            "url": client_events.ToolParameterProperty(type="string"),
+        },
+        required=["task", "url"],
+    ),
+)
+
+FUNCTIONS_MAP = {"AskExpert": ask_expert, "ReadPage": get_web_info}
 
 
 class OpenAIRealtimeClient:
@@ -109,8 +125,16 @@ class OpenAIRealtimeClient:
                 async def execute_function(fn_name: str, function_args: str) -> str:
                     function = FUNCTIONS_MAP.get(fn_name)
                     args = json.loads(function_args)
-                    expert_response = await function(query=args.get("query"))
-                    return expert_response
+                    match fn_name:
+                        case "AskExpert":
+                            fn_output = await function(query=args.get("query"))
+                        case "ReadPage":
+                            fn_output = await function(
+                                task=args.get("task"), url=args.get("url")
+                            )
+                        case _:
+                            fn_output = "Function not found"
+                    return fn_output
 
                 fn_response = await execute_function(function_name, arguments)
                 # Create the function call output item

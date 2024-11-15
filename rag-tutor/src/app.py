@@ -450,7 +450,10 @@ class OpenAIMessageHandler:
                     cancel_event.model_dump_json(exclude_none=True)
                 )
 
-                send_event_log("Cancelled", "Audio streaming cancelled", "debug")
+                send_event_log(
+                    "Cancelled",
+                    "Audio streaming cancelled",
+                )
 
             case "audio":
                 if audio_data := data.get("data"):
