@@ -14,7 +14,7 @@ from src.relay_service.models import (
     ClientEventTypes,
     ServerEventTypes,
 )
-from src.scrapegraph_service.web_tool import get_web_info
+from src.scrapegraph_service import get_web_info
 
 SYSTEM_PROMPT = open("src/relay_service/instructions.md").read().strip()
 
@@ -221,6 +221,11 @@ class OpenAIRealtimeClient:
                             logger.debug(
                                 f"Function response: {function_response[:100]} ... {function_response[-100:]}"
                             )
+
+                            if function_name == "ReadPage":
+                                function_response = (
+                                    f"```json\n{function_response}\n```",
+                                )
 
                             if self.message_callback:
                                 await self.message_callback(
