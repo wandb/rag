@@ -44,7 +44,7 @@ class HybridRetriever(weave.Model):
     embed_field: str = "embed_content"
     fts_field: str = "embed_content"
     rerank_model: str = "cohere/rerank-english-v3.0"
-    use_query_expansion: bool = True
+    use_query_expansion: bool = False
     db: Any = None
     table: Any = None
 

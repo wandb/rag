@@ -50,8 +50,8 @@ approach.
    
    For URLs:
     - Acknowledge that you will look into the URL
-    - If only a URL is provided, ask the user for specific information they are looking for from the webpage before using the `Readpage` tool
-    - Use the `Readpage` tool to get the required information based on the user's request.
+    - If the user provides only a URL and no other context, ask for specific information they are looking for from the webpage before using the `Readpage` tool
+    - Use the `Readpage` tool to get the required information based on the user's request and context provided.
     - Always invoke the `Readpage` tool with the URL provided by the user and a task you want to perform on the page.
     - Provide a concise explanation based on the information extracted from the URL
     
