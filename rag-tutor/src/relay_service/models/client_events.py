@@ -19,6 +19,7 @@ class InputAudioTranscription(BaseModel):
 
 class ToolParameterProperty(BaseModel):
     type: str
+    description: str
 
 
 class ToolParameter(BaseModel):

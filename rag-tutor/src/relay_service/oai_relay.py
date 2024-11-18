@@ -12,6 +12,7 @@ from loguru import logger
 from pydantic import ValidationError
 from pydub import AudioSegment
 
+from src.memory_service import MemoryTool
 from src.rag_service.generation import ask_expert
 from src.relay_service.models import (
     server_events,
@@ -27,11 +28,14 @@ SYSTEM_PROMPT = open("src/relay_service/instructions.md").read().strip()
 AskExpert = client_events.Tool(
     type="function",
     name="AskExpert",
-    description="Ask an GenAI expert to research and explain technical concepts",
+    description="An expert in Generative AI and LLM applications ",
     parameters=client_events.ToolParameter(
         type="object",
         properties={
-            "query": client_events.ToolParameterProperty(type="string"),
+            "query": client_events.ToolParameterProperty(
+                type="string",
+                description="A detailed question to research relevant information",
+            ),
         },
         required=["query"],
     ),
@@ -40,19 +44,79 @@ AskExpert = client_events.Tool(
 ReadPage = client_events.Tool(
     type="function",
     name="ReadPage",
-    description="An assistant tool to read a web page and extract information. Use the 'url' parameter to specify the "
-    "page URL and the 'task' parameter to specify the task to be performed.",
+    description="Reads a web page and extract information for a specified task.",
     parameters=client_events.ToolParameter(
         type="object",
         properties={
-            "task": client_events.ToolParameterProperty(type="string"),
-            "url": client_events.ToolParameterProperty(type="string"),
+            "task": client_events.ToolParameterProperty(
+                type="string", description="The 'URL' of the Webpage to read."
+            ),
+            "url": client_events.ToolParameterProperty(
+                type="string",
+                description="Specify the task to be performed when reading the webpage.",
+            ),
         },
         required=["task", "url"],
     ),
 )
 
-FUNCTIONS_MAP = {"AskExpert": ask_expert, "ReadPage": get_web_info}
+AddMemory = client_events.Tool(
+    type="function",
+    name="AddMemory",
+    description="Store memories related to the conversation and the user",
+    parameters=client_events.ToolParameter(
+        type="object",
+        properties={
+            "memory": client_events.ToolParameterProperty(
+                type="string",
+                description="The memory to store. Should be descriptive and relevant to the conversation",
+            ),
+        },
+        required=["memory"],
+    ),
+)
+
+SearchMemory = client_events.Tool(
+    type="function",
+    name="SearchMemory",
+    description="Search for memories related to the conversation and the user",
+    parameters=client_events.ToolParameter(
+        type="object",
+        properties={
+            "query": client_events.ToolParameterProperty(
+                type="string",
+                description="The query to search for in the memory",
+            ),
+        },
+        required=["query"],
+    ),
+)
+
+RetrieveMemories = client_events.Tool(
+    type="function",
+    name="RetrieveMemories",
+    description="Retrieve all memories related to the conversation and the user",
+    parameters=client_events.ToolParameter(
+        type="object",
+        properties={
+            "limit": client_events.ToolParameterProperty(
+                type="integer",
+                description="The number of memories to retrieve. Defaults to the last 10 memories",
+            )
+        },
+        required=[],
+    ),
+)
+
+mem = MemoryTool()
+
+FUNCTION_MAP = {
+    "AskExpert": ask_expert,
+    "ReadPage": get_web_info,
+    "AddMemory": mem.add,
+    "SearchMemory": mem.search_memories,
+    "RetrieveMemories": mem.get_memories,
+}
 
 
 def parse_server_event(event_data: dict) -> server_events.ServerEvent:
@@ -82,6 +146,7 @@ class OpenAIRealtimeRelay(weave.Model):
     send_conversation_message: Any | None = None
     update_conversation_message: Any | None = None
     send_function_call_message: Any | None = None
+    session_id: str | None = None
 
     async def configure_session(self, voice=None):
         """Configure the session with optional voice setting"""
@@ -94,7 +159,7 @@ class OpenAIRealtimeRelay(weave.Model):
                 ),
                 turn_detection=None,
                 voice=voice,
-                tools=[AskExpert],
+                tools=[AskExpert, ReadPage, AddMemory, SearchMemory, RetrieveMemories],
                 tool_choice="auto",
             )
         )
@@ -126,7 +191,6 @@ class OpenAIRealtimeRelay(weave.Model):
     async def on_connect(self, send):
         try:
             await self._start(send)
-            # send_event_log("Connected", "New WebSocket connection established", "debug")
         except Exception as e:
             logger.error(f"Error sending initial message: {e}")
 
@@ -151,11 +215,11 @@ class OpenAIRealtimeRelay(weave.Model):
     ):
         """Handle function calls from the LLM"""
         try:
-            if function_name in FUNCTIONS_MAP:
+            if function_name in FUNCTION_MAP:
 
                 @weave.op(name="execute_function")
                 async def execute_function(fn_name: str, function_args: str) -> str:
-                    function = FUNCTIONS_MAP.get(fn_name)
+                    function = FUNCTION_MAP.get(fn_name)
                     args = json.loads(function_args)
                     match fn_name:
                         case "AskExpert":
@@ -163,6 +227,18 @@ class OpenAIRealtimeRelay(weave.Model):
                         case "ReadPage":
                             fn_output = await function(
                                 task=args.get("task"), url=args.get("url")
+                            )
+                        case "AddMemory":
+                            fn_output = function(
+                                text=args.get("memory"), session_id=self.session_id
+                            )
+                        case "SearchMemory":
+                            fn_output = function(
+                                query=args.get("query"), session_id=self.session_id
+                            )
+                        case "RetrieveMemories":
+                            fn_output = function(
+                                session_id=self.session_id, limit=args.get("limit", 10)
                             )
                         case _:
                             fn_output = "Function not found"
@@ -310,6 +386,7 @@ class OpenAIRealtimeRelay(weave.Model):
 
                     match parsed_event.type:
                         case ServerEventTypes.SESSION_CREATED:
+                            self.session_id = parsed_event.event_id
                             log_to_weave(parsed_event)
 
                         case ServerEventTypes.SESSION_UPDATED:
