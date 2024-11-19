@@ -270,6 +270,27 @@ class OpenAIRealtimeRelay(weave.Model):
                 return fn_response
 
         except Exception as e:
+            # Create the function call output item
+            function_output_item = client_events.ConversationItem(
+                type="function_call_output",
+                call_id=call_id,
+                output=f"Error executing function: {str(e)}",
+            )
+
+            create_event = client_events.ConversationItemCreate(
+                type=ClientEventTypes.CONVERSATION_ITEM_CREATE,
+                item=function_output_item,
+            )
+            log_to_weave(create_event)
+            # Send the function output
+            await self.send(create_event.model_dump_json(exclude_none=True))
+
+            # Create and send response create event to get the assistant's response
+            response_event = client_events.ResponseCreate(
+                type=ClientEventTypes.RESPONSE_CREATE
+            )
+            await self.send(response_event.model_dump_json(exclude_none=True))
+            log_to_weave(response_event)
             logger.error(f"Error in function call: {e}")
             error_msg = f"Error executing function: {str(e)}"
             return error_msg
